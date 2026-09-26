@@ -155,6 +155,66 @@ describe("speech window positioning", () => {
   });
 });
 
+describe("Groq structured dialogue", () => {
+  it("requests strict JSON schema with low reasoning", async () => {
+    let body: Record<string, unknown> | undefined;
+    const fetcher: typeof fetch = async (_input, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                text: "huh",
+                quickResponses: ["what"],
+                emotion: "curious",
+                endConversation: false
+              })
+            }
+          }]
+        })
+      } as Response;
+    };
+    const groq = new GroqDialogueProvider("test-key", "openai/gpt-oss-20b", fetcher);
+    await groq.respond(request);
+
+    const responseFormat = body?.response_format as { type?: string; json_schema?: { strict?: boolean } } | undefined;
+    expect(responseFormat?.type).toBe("json_schema");
+    expect(responseFormat?.json_schema?.strict).toBe(true);
+    expect(body?.reasoning_effort).toBe("low");
+    expect(body?.include_reasoning).toBe(false);
+    expect(body?.stream).toBe(false);
+  });
+
+  it("stops retrying Groq after an authentication failure", async () => {
+    let calls = 0;
+    const groq = new GroqDialogueProvider("bad-key", "openai/gpt-oss-20b", async () => {
+      calls += 1;
+      return { ok: false, status: 401, json: async () => ({}) } as Response;
+    });
+    const fallback = new FallbackDialogueProvider(groq, new LocalDialogueProvider(() => 0));
+
+    await fallback.respond(request);
+    await fallback.respond(request);
+
+    expect(calls).toBe(1);
+  });
+
+  it("propagates cancellation instead of turning it into a local reply", async () => {
+    const fetcher: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    });
+    const groq = new GroqDialogueProvider("test-key", "openai/gpt-oss-20b", fetcher, 10_000);
+    const fallback = new FallbackDialogueProvider(groq, new LocalDialogueProvider(() => 0));
+    const controller = new AbortController();
+    const pending = fallback.respond(request, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toBeTruthy();
+  });
+});
+
 describe("Groq fallback", () => {
   it("falls back locally after HTTP and invalid-JSON errors", async () => {
     const responses: Response[] = [
@@ -257,15 +317,48 @@ describe("user-requested Talk", () => {
     });
 
     const starting = controller.startUserSession();
-    completeResponse?.({ text: "yeah?", quickResponses: ["okay"] });
+    completeResponse?.({ text: "yeah?", quickResponses: ["okay"], endConversation: false });
     await starting;
     const firstReply = controller.reply("one");
     await controller.reply("double");
     expect(controller.getSession()?.messages.filter((message) => message.role === "user").map((message) => message.text)).toEqual(["one"]);
-    completeResponse?.({ text: "huh", quickResponses: [] });
+    completeResponse?.({ text: "huh", quickResponses: [], endConversation: false });
     await firstReply;
     expect(responseCount).toBe(2);
     controller.dispose();
+  });
+});
+
+describe("conversation endings", () => {
+  it("closes shortly after Tiny Mint marks a reply final", async () => {
+    vi.useFakeTimers();
+    const controller = new InteractionController({
+      getState: defaultState,
+      brain: {
+        setLocation: () => undefined,
+        setConversationActive: () => undefined,
+        recordConversationReply: () => undefined,
+        recordCreatureConversation: () => undefined
+      },
+      provider: {
+        respond: async () => ({
+          text: "okay i'm done now",
+          quickResponses: [],
+          emotion: "chill",
+          endConversation: true
+        })
+      },
+      onSession: () => undefined
+    });
+    try {
+      await controller.startUserSession();
+      expect(controller.getSession()?.current.endConversation).toBe(true);
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(controller.getSession()).toBeNull();
+    } finally {
+      controller.dispose();
+      vi.useRealTimers();
+    }
   });
 });
 
