@@ -15,6 +15,8 @@ const dialogueMessage = required<HTMLParagraphElement>("#dialogue-message");
 const saveKey = required<HTMLButtonElement>("#save-key");
 const clearKey = required<HTMLButtonElement>("#clear-key");
 const testConnection = required<HTMLButtonElement>("#test-connection");
+const exportState = required<HTMLButtonElement>("#export-state");
+const exportMessage = required<HTMLParagraphElement>("#export-message");
 
 function renderDialogue(value: DialogueSettingsStatus): void {
   dialogueStatus.textContent = value.provider;
@@ -65,6 +67,21 @@ testConnection.addEventListener("click", async () => {
   }
 });
 
+exportState.addEventListener("click", async () => {
+  exportState.disabled = true;
+  exportMessage.dataset.error = "false";
+  exportMessage.textContent = "Choose where to save the backup…";
+  try {
+    const saved = await window.tinyMint.exportState();
+    exportMessage.textContent = saved ? "Tiny Mint backup exported." : "Export cancelled.";
+  } catch (error) {
+    exportMessage.dataset.error = "true";
+    exportMessage.textContent = `Couldn't export Tiny Mint: ${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    exportState.disabled = false;
+  }
+});
+
 function preferenceKey(input: HTMLInputElement): keyof CreaturePreferences {
   const key = input.dataset.preference;
   if (!key || !Object.hasOwn(defaultPreferences, key)) throw new Error(`Unknown preference control: ${key ?? "(missing)"}`);
@@ -80,7 +97,8 @@ const defaultPreferences: CreaturePreferences = {
   roomVisitsEnabled: true,
   roomAutonomyEnabled: true,
   interactionsEnabled: true,
-  startWithWindows: false
+  startWithWindows: false,
+  quietMode: false
 };
 
 function render(state: CreatureState): void {

@@ -6,7 +6,7 @@ Creature Brain continues to own simulation, mood, movement, animation, and room 
 
 Conversation is a small desktop-only speech window, not a transcript panel. It follows overlay movement and is clamped to the active display work area. The user can start Talk from Tiny Mint's context menu or the tray, including while paused or while creature-initiated interactions are disabled. If Tiny Mint is in his room, Talk brings him to the desktop first.
 
-While a conversation is active, the creature continues to simulate. Autonomous room transitions are temporarily excluded, but other activities and manual controls remain available. User and creature messages are kept in memory only, with a six-message limit.
+While a conversation is active, the creature continues to simulate. Autonomous room transitions are temporarily excluded, but other activities and manual controls remain available. Quiet mode suppresses creature-initiated sessions and dismisses an unengaged autonomous bubble; a user-requested Talk session and manual room controls remain usable. User and creature messages are kept in memory only, with a six-message limit.
 
 ## Initiation and dismissal
 
@@ -16,14 +16,14 @@ Unengaged creature-initiated bubbles quietly expire after 25 seconds. Hovering, 
 
 ## Providers
 
-`LocalDialogueProvider` always works offline and uses a compact, intentionally limited vocabulary. During development, copy `.env.example` to `.env`, add the key, and run `npm run dev`:
+`LocalDialogueProvider` always works offline and uses a compact, intentionally limited vocabulary. For arbitrary typed replies it uses neutral acknowledgments and follow-up prompts; it does not claim semantic understanding. During development, copy `.env.example` to `.env`, add the key, and run `npm run dev`:
 
 ```powershell
 copy .env.example .env
 npm run dev
 ```
 
-Set `GROQ_API_KEY` and, optionally, `GROQ_MODEL=openai/gpt-oss-20b` in `.env`. Development loads it only into Electron's main process; existing parent-process variables take precedence. Without a key, the app starts with the local voice. `.env` is gitignored and is not packaged. Packaged builds remain local unless credentials are supplied by an external process environment; secure storage for packaged credentials is a separate future design.
+Set `GROQ_API_KEY` and, optionally, `GROQ_MODEL=openai/gpt-oss-20b` in `.env`. Development loads it only into Electron's main process; existing parent-process variables take precedence. Without a key, the app starts with the local voice. `.env` is gitignored and is not packaged. Packaged users may save a key in Settings; it is encrypted by Electron safeStorage on supported Windows installations and is never included in creature-state exports.
 
 The API key is never exposed through the context bridge. Calls have a 10-second abort timeout and are cancelled when their conversation closes, Tiny Mint goes home, or the app exits. Requests preserve user/creature message roles, send only a qualitative compact creature context plus six recent messages, use Groq strict JSON Schema output, low reasoning effort, and validate all returned fields. HTTP, timeout, network, parse, and schema failures use local dialogue instead. A 401/403 disables further Groq attempts for the current runtime so bad credentials cannot create a retry storm. Settings shows only **Local voice** or **Groq ready**, never the key.
 

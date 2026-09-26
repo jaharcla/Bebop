@@ -55,6 +55,15 @@ export type Activity =
   | "visitRoom"
   | "visitDesktop";
 
+export type FacingDirection = "left" | "right";
+export type CorkboardSketchKind = "plant" | "book" | "ball" | "portrait" | "heart" | "abstract" | "star";
+
+export interface CorkboardSketch {
+  id: string;
+  kind: CorkboardSketchKind;
+  createdAt: number;
+}
+
 export type AnimationName =
   | "idle"
   | "walk"
@@ -117,10 +126,11 @@ export interface CreaturePreferences {
   roomAutonomyEnabled: boolean;
   interactionsEnabled: boolean;
   startWithWindows: boolean;
+  quietMode: boolean;
 }
 
 export interface CreatureState {
-  schemaVersion: 2;
+  schemaVersion: 4;
   location: Location;
   currentActivity: Activity;
   currentAnimation: AnimationName;
@@ -136,6 +146,8 @@ export interface CreatureState {
   lastCreatureInteraction: number;
   lastActivityChange: number;
   position: { x: number; y: number };
+  facing: FacingDirection;
+  corkboardSketches: CorkboardSketch[];
   room: {
     target: RoomPropId;
     position: WorldPosition;

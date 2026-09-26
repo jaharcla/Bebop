@@ -1,4 +1,5 @@
-import type { Activity, AnimationName, RoomPropId, WorldPosition } from "../../shared/types";
+import type { Activity, AnimationName, FacingDirection, RoomPropId, WorldPosition } from "../../shared/types";
+import { roomPropById } from "../room/roomProps";
 
 export interface Affordance {
   id: string;
@@ -38,3 +39,8 @@ export const roomEntities: Readonly<Record<RoomPropId, WorldEntity>> = {
 };
 
 export const approachPoint = (id: RoomPropId): WorldPosition => roomEntities[id].approachPoints[0];
+
+export function facingTowardProp(position: WorldPosition, id: RoomPropId, previous: FacingDirection): FacingDirection {
+  const delta = roomPropById(id).x - position.x;
+  return Math.abs(delta) <= 2 ? previous : delta < 0 ? "left" : "right";
+}

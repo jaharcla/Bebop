@@ -53,6 +53,7 @@ const send = required<HTMLButtonElement>("#send");
 const debug = required<HTMLDetailsElement>("#debug");
 const stateView = required<HTMLPreElement>("#state");
 const propsRoot = required<HTMLElement>("#props");
+const sketchesRoot = required<HTMLElement>("#corkboard-sketches");
 
 const animator = new SpriteAnimator(canvas);
 if (!window.tinyMint.isDevelopment) debug.hidden = true;
@@ -63,6 +64,16 @@ const propButtons = new Map<RoomPropId, HTMLButtonElement>();
 function labelFor(id: RoomPropId): string {
   return id.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+
+const sketchArt = {
+  plant: '<path d="M12 21V10m0 5C3 15 5 7 5 7s7 0 7 8m0-2c0-7 7-7 7-7s1 8-7 10" fill="none" stroke="#507d54" stroke-width="2"/>',
+  book: '<path d="M4 5h7a2 2 0 0 1 2 2v13H6a2 2 0 0 0-2 2zm16 0h-7a2 2 0 0 0-2 2v13h7a2 2 0 0 1 2 2z" fill="#f4ca72" stroke="#805c38" stroke-width="1.5"/>',
+  ball: '<circle cx="12" cy="12" r="8" fill="#ed907b" stroke="#8a5549" stroke-width="1.5"/><path d="M5 8c4 1 6 5 7 12m7-16c-1 5-5 7-12 8" fill="none" stroke="#fff0d3" stroke-width="1.5"/>',
+  portrait: '<circle cx="12" cy="10" r="6" fill="#b9dfc3" stroke="#52776a" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="#294b43"/><circle cx="14" cy="10" r="1" fill="#294b43"/><path d="M8 20c1-4 7-4 8 0" fill="none" stroke="#52776a" stroke-width="2"/>',
+  heart: '<path d="M12 21S3 15 4 9c1-5 7-5 8-1 2-4 8-4 9 1 1 6-9 12-9 12z" fill="#e88987" stroke="#8a5554" stroke-width="1.5"/>',
+  abstract: '<path d="M5 17 9 5l4 13 3-9 3 8" fill="none" stroke="#8171a3" stroke-width="2"/><circle cx="7" cy="7" r="1.5" fill="#e0a55e"/>',
+  star: '<path d="m12 3 2.5 6 6.5.5-5 4.2 1.5 6.3-5.5-3.4-5.5 3.4 1.5-6.3-5-4.2L9.5 9z" fill="#efca68" stroke="#937b42" stroke-width="1.3"/>'
+} as const;
 
 for (const prop of roomProps) {
   const button = document.createElement("button");
@@ -96,6 +107,7 @@ function render(state: CreatureState): void {
   send.textContent = isHome ? "Send Tiny Mint outside" : "Call Tiny Mint home";
   animator.setPaused(state.preferences.paused || state.preferences.reducedMotion || systemMotionPreference.matches);
   animator.setAnimation(state.currentAnimation);
+  creature.classList.toggle("facing-left", state.facing === "left");
 
   for (const [id, button] of propButtons) {
     button.dataset.selected = String(isHome && id === state.room.target);
@@ -118,6 +130,15 @@ function render(state: CreatureState): void {
     carriedItem.hidden = true;
     activity.textContent = "Away on the desktop";
   }
+
+  sketchesRoot.replaceChildren(...state.corkboardSketches.map((sketch, index) => {
+    const card = document.createElement("span");
+    card.className = "sketch-card";
+    card.dataset.kind = sketch.kind;
+    card.style.setProperty("--sketch-tilt", `${index % 2 === 0 ? -5 : 4}deg`);
+    card.innerHTML = `<svg viewBox="0 0 24 24" focusable="false">${sketchArt[sketch.kind]}</svg>`;
+    return card;
+  }));
 
   stateView.textContent = JSON.stringify(state, null, 2);
 }

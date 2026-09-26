@@ -1,7 +1,7 @@
 import type { CreatureState } from "../../shared/types";
 
 export const defaultState = (): CreatureState => ({
-  schemaVersion: 2,
+  schemaVersion: 4,
   location: "desktop",
   currentActivity: "idle",
   currentAnimation: "idle",
@@ -17,6 +17,8 @@ export const defaultState = (): CreatureState => ({
   lastCreatureInteraction: Date.now(),
   lastActivityChange: Date.now(),
   position: { x: 80, y: 80 },
+  facing: "right",
+  corkboardSketches: [],
   room: { target: "door", position: { x: 850, y: 430 }, carriedItem: null, intention: null },
   habits: {
     activityAffinity: {},
@@ -36,7 +38,8 @@ export const defaultState = (): CreatureState => ({
     roomVisitsEnabled: true,
     roomAutonomyEnabled: true,
     interactionsEnabled: true,
-    startWithWindows: false
+    startWithWindows: false,
+    quietMode: false
   },
   privacy: { awarenessEnabled: false, contextLevel: "minimal" },
   personality: {
@@ -61,6 +64,16 @@ export const clampState = (state: CreatureState): CreatureState => {
     socialInterest: bounded(state.socialInterest),
     boredom: bounded(state.boredom),
     curiosity: bounded(state.curiosity),
-    comfort: bounded(state.comfort)
+    comfort: bounded(state.comfort),
+    personality: {
+      curiosity: Math.max(0, Math.min(1, state.personality.curiosity)),
+      creativity: Math.max(0, Math.min(1, state.personality.creativity)),
+      chaos: Math.max(0, Math.min(1, state.personality.chaos)),
+      confidence: Math.max(0, Math.min(1, state.personality.confidence)),
+      independence: Math.max(0, Math.min(1, state.personality.independence)),
+      affection: Math.max(0, Math.min(1, state.personality.affection)),
+      patience: Math.max(0, Math.min(1, state.personality.patience)),
+      sociability: Math.max(0, Math.min(1, state.personality.sociability))
+    }
   };
 };

@@ -6,8 +6,8 @@ import { updateImpulse } from "../behavior/behaviorImpulses";
 import { animationFor, chooseActivity, type RandomSource } from "../behavior/behaviorEngine";
 import { recordHabit } from "../behavior/habitModel";
 import { clampState, defaultState } from "../state/defaultState";
-import { approachPoint } from "../world/roomEntities";
-import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId, WorldPosition } from "../../shared/types";
+import { facingTowardProp } from "../world/roomEntities";
+import type { Activity, CorkboardSketchKind, CreaturePreferences, CreatureState, FacingDirection, Location, RoomPropId, WorldPosition } from "../../shared/types";
 
 export type StateListener = (state: CreatureState) => void;
 
@@ -18,6 +18,7 @@ export class CreatureBrain {
   private nextDecisionAt = Date.now() + 14_000;
   private lastNeedsUpdate = Date.now();
   private conversationActive = false;
+  private suspendedAt: number | undefined;
   private readonly planner: BehaviorPlanner;
   private readonly executor: ActionExecutor;
 
@@ -43,13 +44,31 @@ export class CreatureBrain {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.tick(), 100);
+    this.scheduleTick();
   }
 
   stop(): void {
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     this.executor.cancel();
+  }
+
+  suspend(): void {
+    if (this.suspendedAt !== undefined) return;
+    this.suspendedAt = Date.now();
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+  }
+
+  resume(): void {
+    if (this.suspendedAt === undefined) return;
+    const now = Date.now();
+    const suspendedFor = now - this.suspendedAt;
+    this.suspendedAt = undefined;
+    this.nextDecisionAt += suspendedFor;
+    this.lastNeedsUpdate = now;
+    this.executor.rebaseAfterSuspend(suspendedFor, now);
+    if (!this.timer) this.scheduleTick();
   }
 
   interact(kind: "click" | "drag"): void {
@@ -77,11 +96,22 @@ export class CreatureBrain {
     this.publish();
   }
 
-  setPosition(x: number, y: number, options: { notify?: boolean; userInteraction?: boolean } = {}): void {
+  setPosition(x: number, y: number, options: { notify?: boolean; userInteraction?: boolean; preserveFacing?: boolean } = {}): void {
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Creature position must be finite.");
-    this.state.position = { x: Math.round(x), y: Math.round(y) };
+    const next = { x: Math.round(x), y: Math.round(y) };
+    const dx = next.x - this.state.position.x;
+    const previousFacing = this.state.facing;
+    if (!options.preserveFacing && Math.abs(dx) > 1) this.state.facing = dx < 0 ? "left" : "right";
+    const facingChanged = this.state.facing !== previousFacing;
+    this.state.position = next;
     if (options.userInteraction) this.state.lastUserInteraction = Date.now();
-    if (options.notify !== false) this.publish();
+    if (options.notify !== false || facingChanged) this.publish();
+  }
+
+  setFacing(facing: FacingDirection): void {
+    if (this.state.facing === facing) return;
+    this.state.facing = facing;
+    this.publish();
   }
 
   useRoomProp(id: RoomPropId): void {
@@ -119,7 +149,7 @@ export class CreatureBrain {
 
   patchPreferences(patch: Partial<CreaturePreferences>): void {
     this.state.preferences = { ...this.state.preferences, ...patch };
-    if (patch.paused) this.executor.cancel();
+    if (patch.paused && (this.executor.activePlan()?.priority ?? 0) < 100) this.executor.cancel();
     if (Object.hasOwn(patch, "roamingEnabled") && !this.state.preferences.roamingEnabled && this.state.currentActivity === "wander") {
       this.state.currentActivity = "idle";
       this.state.currentAnimation = "idle";
@@ -168,6 +198,15 @@ export class CreatureBrain {
     }
   }
 
+  private scheduleTick(): void {
+    const cadence = this.executor.hasActivePlan() ? 100 : 500;
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      this.tick();
+      this.scheduleTick();
+    }, cadence);
+  }
+
   private updateInternalState(seconds: number): void {
     const resting = ["rest", "sleep", "sit"].includes(this.state.currentActivity);
     this.state.energy += (resting ? 0.7 : -0.12) * seconds;
@@ -181,9 +220,10 @@ export class CreatureBrain {
   private enterRoom(): void {
     this.executor.cancel();
     this.state.location = "room";
+    this.state.facing = "left";
     this.state.room = { ...this.state.room, target: "door", position: { x: 850, y: 430 }, carriedItem: null, intention: "come home" };
     this.state.lastActivityChange = Date.now();
-    this.startPlan(simplePropRoutine("rug", Date.now(), 80));
+    if (!this.state.preferences.paused) this.startPlan(simplePropRoutine("rug", Date.now(), 80));
   }
 
   private transitionLocation(location: Location): void {
@@ -215,9 +255,9 @@ export class CreatureBrain {
       this.state.currentAnimation = this.state.room.carriedItem ? "carry" : "walk";
       if (step.entity) this.state.room.target = step.entity;
     } else if (step.type === "face") {
-      const target = approachPoint(step.entity);
-      this.state.currentActivity = "inspect";
-      this.state.currentAnimation = target.x < this.state.room.position.x ? "reach-left" : "reach-right";
+      this.state.facing = facingTowardProp(this.state.room.position, step.entity, this.state.facing);
+      this.state.currentActivity = this.state.room.carriedItem ? "carry" : "idle";
+      this.state.currentAnimation = this.state.room.carriedItem ? "carry" : "idle";
       this.state.room.target = step.entity;
     } else if (step.type === "pick-up") {
       this.state.room.carriedItem = step.entity;
@@ -229,8 +269,13 @@ export class CreatureBrain {
       this.state.currentAnimation = "idle";
     } else if (step.type === "interact" || step.type === "animate") {
       this.state.currentActivity = step.activity;
-      this.state.currentAnimation = step.animation;
-      if (step.type === "interact") this.state.room.target = step.entity;
+      if (step.type === "interact") {
+        this.state.room.target = step.entity;
+        this.state.facing = facingTowardProp(this.state.room.position, step.entity, this.state.facing);
+      }
+      this.state.currentAnimation = step.type === "interact" && (step.animation === "reach-left" || step.animation === "reach-right")
+        ? this.state.facing === "left" ? "reach-left" : "reach-right"
+        : step.animation;
       this.applyActivityEffects(step.activity);
     } else if (step.type === "transition") {
       this.transitionLocation(step.location);
@@ -241,6 +286,8 @@ export class CreatureBrain {
   }
 
   private moveInRoom(position: WorldPosition, target?: RoomPropId): void {
+    const dx = position.x - this.state.room.position.x;
+    if (Math.abs(dx) > 1) this.state.facing = dx < 0 ? "left" : "right";
     this.state.room.position = { x: Math.round(position.x), y: Math.round(position.y) };
     this.state.currentActivity = "wander";
     this.state.currentAnimation = this.state.room.carriedItem ? "carry" : "walk";
@@ -250,6 +297,37 @@ export class CreatureBrain {
 
   private completePlan(plan: ActionPlan): void {
     this.state.habits = recordHabit(this.state.habits, plan.habitActivity, plan.habitProp);
+    if (plan.habitActivity === "draw" && this.random() < 0.65) {
+      const now = Date.now();
+      const recent = this.state.habits.recentProps;
+      const weighted: Array<[CorkboardSketchKind, number]> = [
+        ["plant", 1 + Math.min(3, (this.state.habits.propUses.plant ?? 0) * 0.1)],
+        ["book", 1 + Math.min(3, (this.state.habits.propUses.bookshelf ?? 0) * 0.1)],
+        ["ball", 1 + Math.min(3, (this.state.habits.propUses.ball ?? 0) * 0.1)],
+        ["portrait", 1 + this.state.personality.affection],
+        ["heart", 0.8 + this.state.personality.affection * 2],
+        ["abstract", 0.5 + this.state.personality.creativity * 4],
+        ["star", 1 + this.state.personality.curiosity]
+      ];
+      for (const item of weighted) {
+        const associatedProp: Partial<Record<CorkboardSketchKind, RoomPropId>> = {
+          plant: "plant", book: "bookshelf", ball: "ball"
+        };
+        if (associatedProp[item[0]] && recent.includes(associatedProp[item[0]]!)) item[1] *= 1.25;
+      }
+      const total = weighted.reduce((sum, [, weight]) => sum + weight, 0);
+      let cursor = this.random() * total;
+      let kind = weighted[0]![0];
+      for (const candidate of weighted) {
+        cursor -= candidate[1];
+        if (cursor <= 0) { kind = candidate[0]; break; }
+      }
+      this.state.corkboardSketches = [...this.state.corkboardSketches, {
+        id: `sketch-${now}-${this.state.corkboardSketches.length}`,
+        kind,
+        createdAt: now
+      }].slice(-6);
+    }
     this.state.room.carriedItem = null;
     this.state.room.intention = null;
     this.state.currentActivity = "idle";

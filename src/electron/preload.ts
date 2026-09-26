@@ -13,6 +13,7 @@ import type {
 contextBridge.exposeInMainWorld("tinyMint", {
   isDevelopment: Boolean(process.env.VITE_DEV_SERVER_URL),
   getState: (): Promise<CreatureState> => ipcRenderer.invoke("state:get"),
+  exportState: (): Promise<boolean> => ipcRenderer.invoke("state:export"),
   getDialogueStatus: (): Promise<DialogueSettingsStatus | null> => ipcRenderer.invoke("dialogue:status"),
   saveGroqKey: (value: string): Promise<DialogueActionResult> => ipcRenderer.invoke("dialogue:save-key", value),
   clearGroqKey: (): Promise<DialogueActionResult> => ipcRenderer.invoke("dialogue:clear-key"),
@@ -37,6 +38,7 @@ contextBridge.exposeInMainWorld("tinyMint", {
   openSettings: () => ipcRenderer.send("settings:open"),
   setLocation: (location: Location) => ipcRenderer.send("state:location", location),
   setActivity: (activity: Activity) => ipcRenderer.send("state:activity", activity),
+  setFacing: (facing: "left" | "right") => ipcRenderer.send("state:facing", facing),
   useRoomProp: (prop: RoomPropId) => ipcRenderer.send("room:use-prop", prop),
   updatePreferences: (preferences: Partial<CreaturePreferences>) => ipcRenderer.send("preferences:update", preferences),
   talk: () => ipcRenderer.send("interaction:start"),

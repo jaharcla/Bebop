@@ -30,14 +30,14 @@ describe("ActionExecutor", () => {
   it("executes the book routine in physical order", () => {
     expect(runPlan(bookRoutine(0)).events).toEqual([
       "move bookshelf", "face bookshelf", "select-book bookshelf", "pickup book",
-      "move chair", "read chair", "move bookshelf", "drop book", "complete"
+      "move chair", "face chair", "read chair", "move bookshelf", "face bookshelf", "drop book", "complete"
     ]);
   });
 
   it("executes watering as pickup, plant interaction, and return", () => {
     expect(runPlan(wateringRoutine(0)).events).toEqual([
       "move watering-can", "face watering-can", "pick-up watering-can", "pickup watering-can",
-      "move plant", "water plant", "move watering-can", "drop watering-can", "complete"
+      "move plant", "face plant", "water plant", "move watering-can", "face watering-can", "drop watering-can", "complete"
     ]);
   });
 

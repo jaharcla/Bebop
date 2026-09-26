@@ -91,6 +91,16 @@ describe("BehaviorPlanner", () => {
     expect(planDuration(patientPlan)).toBeGreaterThan(planDuration(spontaneousPlan));
   });
 
+  it("uses confidence to favor active play and exercise", () => {
+    const confident = defaultState();
+    confident.location = "room";
+    confident.personality.confidence = 1;
+    const cautious = structuredClone(confident);
+    cautious.personality.confidence = 0;
+    expect(scoreRoomBehaviors(confident, 14).exercise).toBeGreaterThan(scoreRoomBehaviors(cautious, 14).exercise);
+    expect(scoreRoomBehaviors(confident, 14).play).toBeGreaterThan(scoreRoomBehaviors(cautious, 14).play);
+  });
+
   it("bounds habit reinforcement, regresses other affinities, and retains eight recent choices", () => {
     let habits = defaultState().habits;
     habits.activityAffinity.play = 1.2;

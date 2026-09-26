@@ -12,6 +12,9 @@ button { font: inherit; color: inherit; }
 .floor { position: absolute; inset: 52.5% 0 0; background: #dce6ca; background-image: repeating-linear-gradient(0deg, transparent 0 59px, #a9bd8f26 60px); }
 .baseboard { position: absolute; left: 0; right: 0; top: 52.15%; height: 0.8%; min-height: 3px; background: #a8be9d; }
 #props { position: absolute; inset: 0; }
+#corkboard-sketches { position: absolute; left: 44.5%; top: 3.3%; width: 12.8%; height: 15.5%; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2px; z-index: 900; pointer-events: none; }
+.sketch-card { display: grid; place-items: center; padding: 2px; border: 1px solid #c5a96f; background: #fff4d7; box-shadow: 1px 2px 2px #34352d3b; transform: rotate(var(--sketch-tilt)); }
+.sketch-card svg { width: 100%; height: 100%; image-rendering: pixelated; }
 .room-prop { position: absolute; padding: 0; margin: 0; border: 0; background: transparent; transform: translate(-50%, -50%); cursor: pointer; image-rendering: pixelated; outline: none; }
 .room-prop img { display: block; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
 .room-prop:hover::after, .room-prop:focus-visible::after { content: attr(aria-label); position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -4px); padding: 4px 7px; border: 1px solid #9db39a; border-radius: 8px; background: #fff8e8ed; color: #355b52; font-size: 11px; white-space: nowrap; z-index: 2000; }
@@ -21,6 +24,8 @@ button { font: inherit; color: inherit; }
 #room-creature { position: absolute; width: 12.5%; aspect-ratio: 1; transform: translate(-50%, -100%); transition: left 120ms linear, top 120ms linear; pointer-events: none; z-index: 1000; }
 #room-creature.music { animation: quiet-sway 1.4s ease-in-out infinite; }
 #room-creature.play { animation: tiny-hop .8s ease-in-out infinite; }
+#facing-wrapper { position: relative; width: 100%; height: 100%; }
+#room-creature.facing-left #facing-wrapper { transform: scaleX(-1); }
 #mint { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 #carried-item { position: absolute; left: 50%; bottom: 4%; width: 42%; height: 42%; object-fit: contain; transform: translateX(-50%); image-rendering: pixelated; }
 #carried-item[hidden] { display: none; }

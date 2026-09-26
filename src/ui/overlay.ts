@@ -15,6 +15,7 @@ let dragStart = { x: 0, y: 0 };
 let transient = false;
 let clickThrough = false;
 let transientTimer: number | undefined;
+let cursorFacing: "left" | "right" | undefined;
 
 function clearTransientTimer(): void {
   if (transientTimer !== undefined) window.clearTimeout(transientTimer);
@@ -28,12 +29,19 @@ function applyAnimation(): void {
     const dx = pointer.x - 96;
     const dy = pointer.y - 80;
     const near = Math.hypot(dx, dy) < 72;
+    const facing = dx < -1 ? "left" : dx > 1 ? "right" : state.facing;
+    if (cursorFacing !== facing) {
+      cursorFacing = facing;
+      window.tinyMint.setFacing(facing);
+    }
     const name: AnimationName = near ? (dx < 0 ? "reach-left" : "reach-right") : "look";
     animator.setAnimation(name);
+    animator.setFlipped(name !== "reach-left" && name !== "reach-right" && facing === "left");
     if (name === "look") animator.setDirectionalFrame(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 0 : 2) : (dy < 0 ? 1 : 3));
     return;
   }
   animator.setAnimation(state.currentAnimation);
+  animator.setFlipped(state.currentAnimation !== "reach-left" && state.currentAnimation !== "reach-right" && state.facing === "left");
 }
 
 function setClickThrough(ignore: boolean): void {

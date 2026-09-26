@@ -63,4 +63,4 @@ The room placement and anchors are derived from the v3 room prototype's 960×600
 - `SpriteAnimator` no longer assumes four sequential frames for every animation.
 - `held` and `land` are local interaction animations on the desktop; they do not need to become long-lived Creature Brain states.
 - Some props intentionally reuse the nearest finished mascot animation because no dedicated v3 animation exists yet. In particular music uses `sit` plus a subtle sway, and plant/watering-can use reach/inspect.
-- Groq, Notion, screen awareness, generated doodles, and relationship mechanics remain out of scope for this integration pass.
+- Groq remains optional and separate from the sprite system. The current corkboard doodles are small local SVG motifs, not image-generation output. Notion, screen awareness, and relationship mechanics remain out of scope.

@@ -12,7 +12,7 @@ const openingLines: Record<DialogueRequest["trigger"], readonly string[]> = {
 
 const initialReplies = ["coding", "school stuff", "secret"];
 const followUpReplies = ["no promises", "too late", "you’re welcome"];
-const reactions = ["oh wait that’s cool", "huh", "fair enough", "okay that’s kinda sick", "i’ll allow it", "wait wait"];
+const reactions = ["huh", "mm", "okay", "i'm listening", "not sure what to say to that", "fair", "tell me more?"];
 
 export class LocalDialogueProvider implements DialogueProvider {
   constructor(private readonly random: () => number = Math.random) {}

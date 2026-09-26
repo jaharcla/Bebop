@@ -35,12 +35,13 @@ npm run typecheck
 - Drag the opaque sprite pixels to pick him up; the v3 held and landing animations are wired in.
 - Right-click Tiny Mint or the tray icon for room, settings, location, pause, and quit controls.
 - Double-click the tray icon or press `Ctrl+Shift+M` to open his room.
-- Use Settings to toggle roaming, room visits and autonomy, cursor play, reduced motion, startup at login, and other preferences.
-- In the room, click any prop to have Tiny Mint use it.
+- Use Settings to toggle roaming, room visits and autonomy, cursor play, quiet mode, reduced motion, startup at login, and other preferences.
+- In the room, click any prop to have Tiny Mint walk over and use it. Completed drawing routines may leave a small local doodle on the corkboard.
+- Settings can export a JSON backup of creature state and room history. The export excludes Groq credentials and ephemeral conversations; reset requires native confirmation and does not clear the saved key.
 - The room's debug panel is visible only in development mode.
 - Right-click Tiny Mint or the tray icon and choose **Talk** for an optional short conversation. Quick replies or a short typed reply are supported; Escape or the close button dismisses it.
 
-Master pause stops autonomous simulation decisions while keeping windows and manual controls responsive. Reduced motion is visual-only: the app preference or the operating-system preference freezes sprite animation, but does not set or pause the creature's simulation.
+Master pause stops autonomous decisions and room plans while keeping manual controls responsive; manually requested room routines can continue while paused. Reduced motion is visual-only: the app preference or the operating-system preference freezes sprite animation, but does not set or pause the creature's simulation. Quiet mode suppresses creature-initiated speech; manual Talk remains available.
 
 Packaged Windows builds manage sign-in startup through Electron's login-item settings. Development builds retain the preference for the packaged app and log that OS startup registration is not applied; this does not prevent the app from running.
 
@@ -86,6 +87,8 @@ The optional user-supplied bong art pack is stored separately under `assets/spri
 
 ## Offline-first boundary
 
-State is stored locally in Electron's per-user application data directory. No network, account, screen capture, Groq key, Notion integration, or activity monitoring is required for the creature to run.
+State is stored locally in Electron's per-user application data directory. Tiny Mint validates saves, keeps a last-known-good backup, and can recover it if the primary file is damaged. The app reclamps him when display work areas change and rebases active routines after system suspend. No network, account, screen capture, Groq key, Notion integration, or activity monitoring is required for the creature to run.
+
+Tiny Mint is currently a focused private alpha. Windows CI runs typecheck, unit tests, and the production renderer/main-process build. The Electron smoke and live visual routine checks remain manual QA because the smoke opens native Electron windows and is not yet relied on as a headless CI signal. Fullscreen-app detection and battery-impact claims are intentionally deferred.
 
 The preserved v2 and v3 prototypes in `prototypes/` are visual references only. Do not re-extract the old v2 atlas over the v3 production atlas.

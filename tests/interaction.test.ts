@@ -38,6 +38,18 @@ describe("interaction policy", () => {
     expect(shouldInitiateInteraction({ state, trigger: "BECAME_CURIOUS", hasActiveSession: false, now: 1_000_000, notBefore: 0, ignoredStreak: 0 })).toBe(false);
   });
 
+  it("suppresses creature-initiated speech in quiet mode", () => {
+    const state = { ...eligibleState(), preferences: { ...eligibleState().preferences, quietMode: true } };
+    expect(shouldInitiateInteraction({
+      state,
+      trigger: "LONG_QUIET_PERIOD",
+      hasActiveSession: false,
+      now: 1_000_000,
+      notBefore: 0,
+      ignoredStreak: 0
+    })).toBe(false);
+  });
+
   it("does not start a second conversation over an active session", () => {
     expect(shouldInitiateInteraction({ state: eligibleState(), trigger: "BECAME_BORED", hasActiveSession: true, now: 1_000_000, notBefore: 0, ignoredStreak: 0 })).toBe(false);
   });
@@ -189,6 +201,7 @@ describe("local dialogue provider", () => {
       messages: [{ role: "user", text: "?? \u0000 " + "x".repeat(900), at: 1 }]
     });
     expect(response.text.length).toBeGreaterThan(0);
+    expect(response.text).not.toMatch(/cool|sick|i'll allow/i);
   });
 });
 
@@ -441,10 +454,10 @@ describe("user-requested Talk", () => {
     expect(controller.getSession()).toBeNull();
   });
 
-  it("remains available with creature-initiated interactions disabled and supports short exchanges", async () => {
+  it("remains available in quiet mode, while paused, and when creature-initiated speech is disabled", async () => {
     let state = {
       ...defaultState(),
-      preferences: { ...defaultState().preferences, interactionsEnabled: false, paused: true }
+      preferences: { ...defaultState().preferences, interactionsEnabled: false, quietMode: true, paused: true }
     };
     const updates: Array<InteractionSession | null> = [];
     let conversationActive = false;

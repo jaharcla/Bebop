@@ -56,9 +56,19 @@ The v3 art pack has been promoted into the real Electron/TypeScript app.
 - Speech placement is a pure tested calculation and follows overlay movement; active conversation discourages autonomous room transitions without pausing simulation.
 - The supplied bong pack is preserved only under `assets/sprites/v3-source/bonus/bong/`. It is not part of the production atlas or activity system.
 
+## Living behavior and alpha reliability
+
+- Room action plans now include object-facing steps. Horizontal movement sets persistent facing; vertical movement preserves it. Facing mirrors the body and carried item together without replacing the room creature's positioning or activity transforms.
+- Desktop horizontal travel and cursor approach update facing; per-pixel hit testing samples the actually rendered canvas. Room exits approach the door before transitioning; desktop arrival uses the nearest edge and faces inward.
+- Completed art routines occasionally pin one of seven locally drawn SVG motifs to the room corkboard. At most six sketches are retained in the local state.
+- The brain uses 100 ms updates while an action plan is active and 500 ms while idle. Suspend/resume rebases action clocks, and display changes reclamp the overlay to the current work area.
+- State schema 4 validates saved values, rotates a known-good backup, recovers from a corrupt primary, and exports creature state without credentials or conversations. Reset asks for native confirmation and does not touch the secure Groq key.
+- Quiet mode suppresses creature-initiated conversations; manual Talk and room interactions remain available. Offline replies to arbitrary user text are intentionally noncommittal.
+- Windows CI runs `npm ci`, typecheck, tests, and build. Electron smoke and full routine visual checks remain manual QA.
+
 ## Recommended next task
 
-Package Tiny Mint for Windows and perform visual/manual QA of speech-window placement, non-stealing focus, and startup behavior. Do not expand the autonomy/AI scope or change the canonical 16-row v3 atlas during that QA.
+Run a focused private-alpha pass on the full book, watering, art, play, and room-exit routines on representative Windows displays. Confirm the user-facing exports and save recovery with real profile backups. Do not add new world systems or alter the v3 atlas without a concrete alpha finding.
 
 ## Toggleability and stability pass
 

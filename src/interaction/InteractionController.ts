@@ -71,14 +71,18 @@ export class InteractionController {
     const previous = this.previousState;
     this.previousState = state;
     if (!previous) return;
-    if (!state.preferences.interactionsEnabled || state.preferences.paused || state.location !== "desktop") {
+    if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop") {
       this.cancelInitiation();
+      if (state.preferences.quietMode && this.session?.origin === "creature" && !this.engaged) this.closeSession();
       return;
     }
     if (!previous.preferences.interactionsEnabled && state.preferences.interactionsEnabled && !this.session) {
       this.scheduleLongQuiet(20 * 60_000 + this.random() * 20 * 60_000);
     }
     if (previous.preferences.paused && !state.preferences.paused && !this.session) {
+      this.scheduleLongQuiet(20 * 60_000 + this.random() * 20 * 60_000);
+    }
+    if (previous.preferences.quietMode && !state.preferences.quietMode && !this.session) {
       this.scheduleLongQuiet(20 * 60_000 + this.random() * 20 * 60_000);
     }
     if (previous.location !== "desktop" && state.location === "desktop") {
@@ -158,7 +162,7 @@ export class InteractionController {
   private queueInitiation(trigger: InteractionTrigger): void {
     if (this.session || this.disposed) return;
     const state = this.options.getState();
-    if (!state.preferences.interactionsEnabled || state.preferences.paused || state.location !== "desktop") return;
+    if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop") return;
     this.pendingTrigger = trigger;
     this.scheduleInitiation();
   }
@@ -168,7 +172,7 @@ export class InteractionController {
     this.initiationTimer = undefined;
     if (!this.pendingTrigger || this.disposed) return;
     const state = this.options.getState();
-    if (!state.preferences.interactionsEnabled || state.preferences.paused || state.location !== "desktop" || this.session) {
+    if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop" || this.session) {
       this.pendingTrigger = null;
       return;
     }
@@ -191,7 +195,7 @@ export class InteractionController {
         notBefore: this.notBefore,
         ignoredStreak: this.ignoredStreak
       })) {
-        if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.paused && currentState.location === "desktop") {
+        if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode && !currentState.preferences.paused && currentState.location === "desktop") {
           this.pendingTrigger = trigger;
           this.scheduleInitiation();
         }

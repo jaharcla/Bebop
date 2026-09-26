@@ -12,30 +12,30 @@ function plan(intention: string, habitActivity: Activity, habitProp: RoomPropId,
 
 export const bookRoutine = (now: number, priority = 40): ActionPlan => plan("read a book", "read", "bookshelf", [
   move("bookshelf"), { type: "face", entity: "bookshelf" }, use("bookshelf", "select-book", "inspect", "reach-right", 1_400),
-  { type: "pick-up", entity: "book" }, move("chair"), use("chair", "read", "read", "read", 10_000),
-  move("bookshelf"), { type: "drop", entity: "book" }
+  { type: "pick-up", entity: "book" }, move("chair"), { type: "face", entity: "chair" }, use("chair", "read", "read", "read", 10_000),
+  move("bookshelf"), { type: "face", entity: "bookshelf" }, { type: "drop", entity: "book" }
 ], now, priority);
 
 export const wateringRoutine = (now: number, priority = 40): ActionPlan => plan("water the plant", "inspect", "plant", [
   move("watering-can"), { type: "face", entity: "watering-can" }, use("watering-can", "pick-up", "inspect", "reach-right", 1_100),
-  { type: "pick-up", entity: "watering-can" }, move("plant"), use("plant", "water", "inspect", "reach-right", 2_600),
-  move("watering-can"), { type: "drop", entity: "watering-can" }
+  { type: "pick-up", entity: "watering-can" }, move("plant"), { type: "face", entity: "plant" }, use("plant", "water", "inspect", "reach-right", 2_600),
+  move("watering-can"), { type: "face", entity: "watering-can" }, { type: "drop", entity: "watering-can" }
 ], now, priority);
 
 export const artRoutine = (now: number, priority = 40): ActionPlan => plan("make and show a sketch", "draw", "desk", [
-  move("desk"), use("desk", "draw", "draw", "draw", 9_000), move("sketchbook"),
-  { type: "pick-up", entity: "sketchbook" }, move("corkboard"), use("corkboard", "inspect-sketch", "show", "carry", 4_000),
-  move("sketchbook"), { type: "drop", entity: "sketchbook" }
+  move("desk"), { type: "face", entity: "desk" }, use("desk", "draw", "draw", "draw", 9_000), move("sketchbook"),
+  { type: "face", entity: "sketchbook" }, { type: "pick-up", entity: "sketchbook" }, move("corkboard"), { type: "face", entity: "corkboard" },
+  use("corkboard", "inspect-sketch", "show", "carry", 4_000), move("sketchbook"), { type: "face", entity: "sketchbook" }, { type: "drop", entity: "sketchbook" }
 ], now, priority);
 
 export const playRoutine = (now: number, priority = 40): ActionPlan => plan("play with the ball", "play", "ball", [
-  move("toy-box"), use("toy-box", "inspect", "inspect", "reach-left", 1_800), move("ball"),
-  { type: "pick-up", entity: "ball" }, move("rug"), use("rug", "play", "play", "tap", 6_000),
-  move("ball"), { type: "drop", entity: "ball" }
+  move("toy-box"), { type: "face", entity: "toy-box" }, use("toy-box", "inspect", "inspect", "reach-left", 1_800), move("ball"),
+  { type: "face", entity: "ball" }, { type: "pick-up", entity: "ball" }, move("rug"), { type: "face", entity: "rug" }, use("rug", "play", "play", "tap", 6_000),
+  move("ball"), { type: "face", entity: "ball" }, { type: "drop", entity: "ball" }
 ], now, priority);
 
 export const roomExitRoutine = (now: number, priority = 40): ActionPlan => plan("go see the desktop", "visitDesktop", "door", [
-  move("door"), use("door", "leave", "visitDesktop", "walk", 700), { type: "transition", location: "desktop" }
+  move("door"), { type: "face", entity: "door" }, use("door", "leave", "visitDesktop", "walk", 700), { type: "transition", location: "desktop" }
 ], now, priority);
 
 export function simplePropRoutine(entity: RoomPropId, now: number, priority = 100): ActionPlan {

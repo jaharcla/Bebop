@@ -21,6 +21,12 @@ export class ActionExecutor {
   activePlan(): ActionPlan | null { return this.plan; }
   hasActivePlan(): boolean { return this.plan !== null; }
 
+  rebaseAfterSuspend(suspendedForMs: number, now: number): void {
+    if (!this.plan) return;
+    this.stepStartedAt += suspendedForMs;
+    this.lastTickAt = now;
+  }
+
   start(plan: ActionPlan, now: number): boolean {
     if (this.plan && this.plan.priority > plan.priority) return false;
     if (this.plan) this.cancel();
