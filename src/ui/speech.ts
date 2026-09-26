@@ -17,6 +17,13 @@ function required<T extends Element>(selector: string): T {
   return element;
 }
 
+function resizeWindowToContent(): void {
+  if (!session) return;
+  requestAnimationFrame(() => {
+    window.tinyMint.resizeSpeechWindow(bubble.scrollHeight + 14);
+  });
+}
+
 function render(next: InteractionSession | null): void {
   session = next;
   bubble.hidden = !next;
@@ -24,7 +31,8 @@ function render(next: InteractionSession | null): void {
 
   const lastUserMessage = [...next.messages].reverse().find((message) => message.role === "user");
   you.hidden = !lastUserMessage;
-  you.textContent = lastUserMessage ? `you: ${lastUserMessage.text}` : "";
+  you.textContent = lastUserMessage ? `you: ${lastUserMessage.text.slice(0, 88)}${lastUserMessage.text.length > 88 ? "…" : ""}` : "";
+  you.title = lastUserMessage?.text ?? "";
   utterance.textContent = next.current.text;
   quickReplies.replaceChildren();
   const repliesDisabled = next.waitingForResponse || next.current.endConversation || next.messages.length >= 6;
@@ -40,9 +48,14 @@ function render(next: InteractionSession | null): void {
   replyInput.disabled = repliesDisabled;
   sendButton.disabled = repliesDisabled;
   if (next.waitingForResponse) utterance.textContent = "...";
+  resizeWindowToContent();
 }
 
 window.tinyMint.onInteraction(render);
+window.tinyMint.onPlacement((placement) => {
+  bubble.classList.toggle("tail-top", placement === "top");
+});
+window.addEventListener("resize", resizeWindowToContent);
 void window.tinyMint.getInteraction().then(render);
 
 form.addEventListener("submit", (event) => {

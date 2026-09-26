@@ -22,3 +22,4 @@ h2 { margin: 0 0 6px; color: #557361; font-size: 12px; letter-spacing: 1.1px; te
 .setting-row input:focus-visible { outline: 3px solid #608f91; outline-offset: 3px; }
 .status { min-height: 15px; margin: 8px 0 0; color: #617669; font-size: 11px; }
 .status[data-error="true"] { color: #9a3e35; }
+.dialogue-status { margin: 0; color: #617669; font-size: 12px; }

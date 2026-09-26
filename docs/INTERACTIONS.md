@@ -16,15 +16,16 @@ Unengaged creature-initiated bubbles quietly expire after 25 seconds. Hovering, 
 
 ## Providers
 
-`LocalDialogueProvider` always works offline and uses a compact, intentionally limited vocabulary. If `GROQ_API_KEY` is present, `GroqDialogueProvider` uses Groq's OpenAI-compatible chat-completions endpoint. `GROQ_MODEL` is optional and defaults to `openai/gpt-oss-20b`:
+`LocalDialogueProvider` always works offline and uses a compact, intentionally limited vocabulary. During development, copy `.env.example` to `.env`, add the key, and run `npm run dev`:
 
 ```powershell
-$env:GROQ_API_KEY = "your-key"
-$env:GROQ_MODEL = "openai/gpt-oss-20b" # optional override
+copy .env.example .env
 npm run dev
 ```
 
-Use the same environment variables when launching a packaged app from a process that has them configured. `.env.example` documents the names; the application does not automatically read `.env`. The API key remains in the Electron main process and is never exposed through the context bridge. Calls have a 10-second abort timeout and are cancelled when their conversation closes. Requests preserve user/creature message roles, send only a qualitative compact creature context plus six recent messages, use Groq strict JSON Schema output, low reasoning effort, and validate/bound every returned field. HTTP, timeout, parse, and validation failures use local dialogue instead. A 401/403 disables further Groq attempts for the current runtime so bad credentials cannot create a retry storm.
+Set `GROQ_API_KEY` and, optionally, `GROQ_MODEL=openai/gpt-oss-20b` in `.env`. Development loads it only into Electron's main process; existing parent-process variables take precedence. Without a key, the app starts with the local voice. `.env` is gitignored and is not packaged. Packaged builds remain local unless credentials are supplied by an external process environment; secure storage for packaged credentials is a separate future design.
+
+The API key is never exposed through the context bridge. Calls have a 10-second abort timeout and are cancelled when their conversation closes, Tiny Mint goes home, or the app exits. Requests preserve user/creature message roles, send only a qualitative compact creature context plus six recent messages, use Groq strict JSON Schema output, low reasoning effort, and validate all returned fields. HTTP, timeout, network, parse, and schema failures use local dialogue instead. A 401/403 disables further Groq attempts for the current runtime so bad credentials cannot create a retry storm. Settings shows only **Local voice** or **Groq ready**, never the key.
 
 ## Privacy
 
@@ -32,4 +33,4 @@ No conversation history is persisted. When Groq is configured, only mood, energy
 
 ## Tests and limitations
 
-`npm test` covers initiation policy, ignored-bubble cooldowns, response validation, local dialogue, Groq failure fallback, and speech-window placement including negative multi-monitor coordinates. Electron smoke verifies Talk with autonomous interactions disabled, speech rendering and on-screen bounds, a quick reply, custom text, Escape dismissal, ongoing brain activity, and room handoff afterward. Groq remains optional; no credentialed request is needed for normal operation or smoke testing. The default model can be overridden if Groq's available model catalog changes.
+`npm test` covers initiation policy, ignored-bubble cooldowns, response validation, local dialogue, prompt roles/context, environment loading, request cancellation, Groq failure fallback, and speech-window placement including negative multi-monitor coordinates. Electron smoke verifies Talk with autonomous interactions disabled, speech rendering and on-screen bounds, a quick reply, custom text, Escape dismissal, ongoing brain activity, and room handoff afterward. Groq remains optional; no credentialed request is needed for normal operation or smoke testing. The default model can be overridden if Groq's available model catalog changes. The provider layer owns normal local fallback; the controller has a final local safety fallback only for unexpected provider/validation failures.

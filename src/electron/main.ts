@@ -3,8 +3,9 @@ import type { MenuItem } from "electron";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { CreatureBrain } from "../creature/brain/CreatureBrain";
+import { loadDevelopmentEnvironment } from "./developmentEnvironment";
 import { InteractionController } from "../interaction/InteractionController";
-import { FallbackDialogueProvider, GroqDialogueProvider } from "../interaction/dialogue/GroqDialogueProvider";
+import { createDialogueProvider as selectDialogueProvider } from "../interaction/dialogue/createDialogueProvider";
 import type { DialogueProvider } from "../interaction/dialogue/DialogueProvider";
 import { LocalDialogueProvider } from "../interaction/dialogue/LocalDialogueProvider";
 import { positionSpeechWindow as calculateSpeechPosition } from "../interaction/speechPosition";
@@ -13,13 +14,15 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
+  DialogueProviderStatus,
   InteractionSession,
   Location,
   RoomPropId
 } from "../shared/types";
 
 const OVERLAY_SIZE = 192;
-const SPEECH_WINDOW_SIZE = { width: 340, height: 190 };
+const SPEECH_WINDOW_SIZE = { width: 340, height: 306 };
+const SPEECH_WINDOW_MIN_SIZE = { width: 340, height: 162 };
 let overlayWindow: BrowserWindow | null = null;
 let roomWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -30,6 +33,8 @@ let trayPauseItem: MenuItem | undefined;
 let brain: CreatureBrain;
 let store: StateStore;
 let interactionController: InteractionController;
+let dialogueProviderStatus: DialogueProviderStatus = "Local voice";
+let speechWindowSize = { ...SPEECH_WINDOW_MIN_SIZE };
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
 let dragOrigin: { pointerX: number; pointerY: number; windowX: number; windowY: number } | null = null;
@@ -37,6 +42,7 @@ let wanderDirection = 1;
 
 const preloadPath = join(__dirname, "preload.js");
 const devUrl = process.env.VITE_DEV_SERVER_URL;
+loadDevelopmentEnvironment(devUrl);
 const smokeUserData = process.env.TINY_MINT_SMOKE_USER_DATA;
 if (smokeUserData) app.setPath("userData", smokeUserData);
 
@@ -47,6 +53,12 @@ function rendererPath(page: "index.html" | "room.html" | "settings.html" | "spee
 async function loadRenderer(window: BrowserWindow, page: "index.html" | "room.html" | "settings.html" | "speech.html"): Promise<void> {
   if (devUrl) await window.loadURL(rendererPath(page));
   else await window.loadFile(rendererPath(page));
+}
+
+function loadRendererInBackground(window: BrowserWindow, page: "index.html" | "room.html" | "settings.html" | "speech.html"): void {
+  void loadRenderer(window, page).catch((error: unknown) => {
+    console.warn(`Could not load the ${page} window.`, error);
+  });
 }
 
 function clampPosition(x: number, y: number): { x: number; y: number } {
@@ -77,7 +89,7 @@ function createOverlay(state: CreatureState): void {
   });
   overlayWindow.setAlwaysOnTop(state.preferences.alwaysOnTop, "floating");
   overlayWindow.on("closed", () => { overlayWindow = null; });
-  void loadRenderer(overlayWindow, "index.html");
+  loadRendererInBackground(overlayWindow, "index.html");
   if (state.location === "room") overlayWindow.hide();
 }
 
@@ -92,7 +104,9 @@ function positionSpeechWindow(): void {
   const center = { x: creature.x + creature.width / 2, y: creature.y + creature.height / 2 };
   const workArea = screen.getDisplayNearestPoint(center).workArea;
   const position = positionSpeechWindowForDisplay(creature, workArea, bubbleBounds);
-  speechWindow.setBounds({ ...position, width: bubbleBounds.width, height: bubbleBounds.height }, false);
+  speechWindow.setBounds({ ...position, ...speechWindowSize }, false);
+  const tailPlacement = position.y >= creature.y + creature.height ? "top" : "bottom";
+  speechWindow.webContents.send("interaction:placement", tailPlacement);
 }
 
 function positionSpeechWindowForDisplay(
@@ -109,6 +123,7 @@ function showSpeechSession(session: InteractionSession | null): void {
     return;
   }
   if (!speechWindow || speechWindow.isDestroyed()) {
+    speechWindowSize = { ...SPEECH_WINDOW_MIN_SIZE };
     const position = calculateSpeechPosition(
       overlayWindow?.getBounds() ?? { x: 80, y: 80, width: OVERLAY_SIZE, height: OVERLAY_SIZE },
       SPEECH_WINDOW_SIZE,
@@ -116,7 +131,7 @@ function showSpeechSession(session: InteractionSession | null): void {
     );
     speechWindowReady = false;
     speechWindow = new BrowserWindow({
-      ...SPEECH_WINDOW_SIZE,
+      ...speechWindowSize,
       ...position,
       transparent: true,
       frame: false,
@@ -142,7 +157,7 @@ function showSpeechSession(session: InteractionSession | null): void {
         speechWindow.showInactive();
       }
     });
-    void loadRenderer(speechWindow, "speech.html");
+    loadRendererInBackground(speechWindow, "speech.html");
   } else if (speechWindowReady) {
     speechWindow.webContents.send("interaction:changed", session);
   }
@@ -158,16 +173,18 @@ function startUserTalk(): void {
 }
 
 function createDialogueProvider(): DialogueProvider {
-  const local = new LocalDialogueProvider();
-  if (process.env.TINY_MINT_SMOKE_OUTPUT) return local;
-  const apiKey = process.env.GROQ_API_KEY?.trim();
-  if (!apiKey) return local;
-  const model = process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-20b";
-  const groq = new GroqDialogueProvider(apiKey, model);
-  return new FallbackDialogueProvider(groq, local, (error) => {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`Groq dialogue unavailable; using local replies (${detail}).`);
+  if (process.env.TINY_MINT_SMOKE_OUTPUT) {
+    dialogueProviderStatus = "Local voice";
+    return new LocalDialogueProvider();
+  }
+  const configured = selectDialogueProvider(process.env.GROQ_API_KEY, process.env.GROQ_MODEL, {
+    reportFailure: (error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.warn(`Groq dialogue unavailable; using local replies (${detail}).`);
+    }
   });
+  dialogueProviderStatus = configured.status;
+  return configured.provider;
 }
 
 function openRoom(): void {
@@ -187,7 +204,7 @@ function openRoom(): void {
   });
   roomWindow.setMenuBarVisibility(false);
   roomWindow.on("closed", () => { roomWindow = null; });
-  void loadRenderer(roomWindow, "room.html");
+  loadRendererInBackground(roomWindow, "room.html");
   roomWindow.show();
   roomWindow.focus();
 }
@@ -210,7 +227,7 @@ function openSettings(): void {
   });
   settingsWindow.setMenuBarVisibility(false);
   settingsWindow.on("closed", () => { settingsWindow = null; });
-  void loadRenderer(settingsWindow, "settings.html");
+  loadRendererInBackground(settingsWindow, "settings.html");
 }
 
 function sendToRoom(): void {
@@ -362,6 +379,7 @@ function applyStartupPreference(enabled: boolean): void {
 function registerIpc(): void {
   ipcMain.handle("state:get", () => brain.snapshot());
   ipcMain.handle("interaction:get", (event) => isSpeechWindow(event.sender) ? interactionController.getSession() : null);
+  ipcMain.handle("dialogue:status", (event) => isApplicationWindow(event.sender) ? dialogueProviderStatus : null);
   ipcMain.on("creature:click", (event) => { if (isApplicationWindow(event.sender)) brain.interact("click"); });
   ipcMain.on("room:open", (event) => { if (isApplicationWindow(event.sender)) openRoom(); });
   ipcMain.on("settings:open", (event) => { if (isApplicationWindow(event.sender)) openSettings(); });
@@ -408,7 +426,9 @@ function registerIpc(): void {
       console.warn("Ignored invalid quick reply from renderer.");
       return;
     }
-    void interactionController.reply(reply);
+    void interactionController.reply(reply).catch((error: unknown) => {
+      console.warn("Could not send a quick Tiny Mint reply.", error);
+    });
   });
   ipcMain.on("interaction:custom-reply", (event, reply: unknown) => {
     const session = interactionController.getSession();
@@ -417,10 +437,24 @@ function registerIpc(): void {
       console.warn("Ignored invalid custom reply from renderer.");
       return;
     }
-    void interactionController.reply(reply);
+    void interactionController.reply(reply).catch((error: unknown) => {
+      console.warn("Could not send a Tiny Mint reply.", error);
+    });
   });
   ipcMain.on("interaction:dismiss", (event) => {
     if (isSpeechWindow(event.sender)) interactionController.dismiss();
+  });
+  ipcMain.on("interaction:resize", (event, height: unknown) => {
+    if (!isSpeechWindow(event.sender)) return;
+    if (typeof height !== "number" || !Number.isFinite(height)) {
+      console.warn("Ignored invalid speech window size request.", height);
+      return;
+    }
+    const boundedHeight = Math.max(SPEECH_WINDOW_MIN_SIZE.height, Math.min(SPEECH_WINDOW_SIZE.height, Math.round(height)));
+    if (boundedHeight === speechWindowSize.height) return;
+    speechWindowSize = { ...SPEECH_WINDOW_SIZE, height: boundedHeight };
+    speechWindow?.setSize(speechWindowSize.width, speechWindowSize.height, false);
+    positionSpeechWindow();
   });
   ipcMain.on("interaction:engage", (event) => {
     if (isSpeechWindow(event.sender)) interactionController.engage();
@@ -479,6 +513,15 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     "document.querySelectorAll('input[data-preference]').length"
   ) as number;
   if (settingsControlCount !== 9) throw new Error(`Expected 9 settings controls; found ${settingsControlCount}.`);
+  const providerDeadline = Date.now() + 2_000;
+  let dialogueProvider = "";
+  while (dialogueProvider !== "Local voice" && Date.now() < providerDeadline) {
+    dialogueProvider = await settings.webContents.executeJavaScript(
+      "document.querySelector('#dialogue-status')?.textContent ?? ''"
+    ) as string;
+    if (dialogueProvider !== "Local voice") await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  if (dialogueProvider !== "Local voice") throw new Error(`Expected local dialogue in smoke mode; found ${dialogueProvider}.`);
   const setCheckbox = async (key: keyof CreaturePreferences, checked: boolean): Promise<void> => {
     await settings.webContents.executeJavaScript(`
       (() => {
@@ -517,6 +560,118 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     && speechBounds.x + speechBounds.width <= workArea.x + workArea.width
     && speechBounds.y + speechBounds.height <= workArea.y + workArea.height;
   if (!speechWindowOnScreen) throw new Error(`Speech window is outside the display work area: ${JSON.stringify(speechBounds)}`);
+  const speechContentBounds = speech.getContentBounds();
+  if (speechContentBounds.width < SPEECH_WINDOW_MIN_SIZE.width || speechContentBounds.height < SPEECH_WINDOW_MIN_SIZE.height
+    || speechContentBounds.width > SPEECH_WINDOW_SIZE.width + 16 || speechContentBounds.height > SPEECH_WINDOW_SIZE.height + 16) {
+    throw new Error(`Speech window content has unexpected dimensions (window=${JSON.stringify(speechBounds)}, content=${JSON.stringify(speechContentBounds)}).`);
+  }
+
+  const originalOverlayBounds = overlayWindow.getBounds();
+  const edgeDisplay = screen.getDisplayNearestPoint({
+    x: originalOverlayBounds.x + originalOverlayBounds.width / 2,
+    y: originalOverlayBounds.y + originalOverlayBounds.height / 2
+  });
+  const edgeArea = edgeDisplay.workArea;
+  const edgePositions = [
+    { x: edgeArea.x + Math.round((edgeArea.width - OVERLAY_SIZE) / 2), y: edgeArea.y },
+    { x: edgeArea.x + Math.round((edgeArea.width - OVERLAY_SIZE) / 2), y: edgeArea.y + edgeArea.height - OVERLAY_SIZE },
+    { x: edgeArea.x, y: edgeArea.y + Math.round((edgeArea.height - OVERLAY_SIZE) / 2) },
+    { x: edgeArea.x + edgeArea.width - OVERLAY_SIZE, y: edgeArea.y + Math.round((edgeArea.height - OVERLAY_SIZE) / 2) }
+  ];
+  let speechEdgeBoundsValid = true;
+  let speechTailAdapts = true;
+  const speechTailChecks: Array<{ position: { x: number; y: number }; bounds: Electron.Rectangle; expectedTop: boolean; actualTop: boolean }> = [];
+  const speechEdgeChecks: Array<{ bounds: Electron.Rectangle; inside: boolean }> = [];
+  for (let index = 0; index < edgePositions.length; index += 1) {
+    const position = edgePositions[index];
+    overlayWindow.setPosition(position.x, position.y);
+    brain.setPosition(position.x, position.y, { notify: false });
+    positionSpeechWindow();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const bounds = speech.getBounds();
+    const inside = bounds.x >= edgeArea.x && bounds.y >= edgeArea.y
+      && bounds.x + bounds.width <= edgeArea.x + edgeArea.width
+      && bounds.y + bounds.height <= edgeArea.y + edgeArea.height;
+    speechEdgeChecks.push({ bounds, inside });
+    speechEdgeBoundsValid &&= inside;
+    const tailAtTop = await speech.webContents.executeJavaScript(
+      "document.querySelector('#bubble')?.classList.contains('tail-top')"
+    ) as boolean;
+    const expectedTop = bounds.y >= position.y + OVERLAY_SIZE;
+    speechTailChecks.push({ position, bounds, expectedTop, actualTop: tailAtTop });
+    speechTailAdapts &&= tailAtTop === expectedTop;
+  }
+  overlayWindow.setPosition(originalOverlayBounds.x, originalOverlayBounds.y);
+  brain.setPosition(originalOverlayBounds.x, originalOverlayBounds.y, { notify: false });
+  positionSpeechWindow();
+  if (!speechEdgeBoundsValid) throw new Error(`Speech window escaped the display work area when Tiny Mint was at a screen edge: ${JSON.stringify({ edgeArea, speechEdgeChecks })}.`);
+  if (!speechTailAdapts) throw new Error(`Speech tail did not track whether the bubble was above or below Tiny Mint: ${JSON.stringify(speechTailChecks)}.`);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await speech.webContents.executeJavaScript(`
+    (() => {
+      const user = document.querySelector('#you');
+      const line = document.querySelector('#utterance');
+      const replies = document.querySelector('#quick-replies');
+      window.__tinyMintSmokeSpeechOriginal = {
+        userText: user.textContent,
+        userHidden: user.hidden,
+        userTitle: user.title,
+        lineText: line.textContent,
+        replies: Array.from(replies.children, (button) => button.textContent)
+      };
+      user.hidden = false;
+      user.textContent = 'you: ' + 'typed reply '.repeat(8) + '…';
+      user.title = 'typed reply '.repeat(40);
+      line.textContent = 'wait '.repeat(32);
+      Array.from(replies.children).forEach((button) => { button.textContent = 'x'.repeat(40); });
+      window.dispatchEvent(new Event('resize'));
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const longContentWindowHeight = speech.getBounds().height;
+  const speechContentLayout = await speech.webContents.executeJavaScript(`
+    (() => {
+      const user = document.querySelector('#you');
+      const line = document.querySelector('#utterance');
+      const replies = document.querySelector('#quick-replies');
+      const layout = {
+        user: { scrollHeight: user.scrollHeight, clientHeight: user.clientHeight, width: user.clientWidth },
+        userTitleLength: user.title.length,
+        line: { scrollHeight: line.scrollHeight, clientHeight: line.clientHeight, width: line.clientWidth },
+        replies: { scrollHeight: replies.scrollHeight, clientHeight: replies.clientHeight, width: replies.clientWidth },
+        viewport: {
+          scrollHeight: document.documentElement.scrollHeight,
+          clientHeight: document.documentElement.clientHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth
+        }
+      };
+      const original = window.__tinyMintSmokeSpeechOriginal;
+      user.textContent = original.userText;
+      user.hidden = original.userHidden;
+      user.title = original.userTitle;
+      line.textContent = original.lineText;
+      Array.from(replies.children).forEach((button, index) => { button.textContent = original.replies[index] ?? ""; });
+      delete window.__tinyMintSmokeSpeechOriginal;
+      window.dispatchEvent(new Event('resize'));
+      return layout;
+    })()
+  `) as { user: { scrollHeight: number; clientHeight: number; width: number }; userTitleLength: number; line: { scrollHeight: number; clientHeight: number; width: number }; replies: { scrollHeight: number; clientHeight: number; width: number }; viewport: { scrollHeight: number; clientHeight: number; scrollWidth: number; clientWidth: number } };
+  const speechContentFits = speechContentLayout.user.scrollHeight <= speechContentLayout.user.clientHeight + 1
+    && speechContentLayout.userTitleLength >= 400
+    && speechContentLayout.line.scrollHeight <= speechContentLayout.line.clientHeight + 1
+    && speechContentLayout.replies.scrollHeight <= speechContentLayout.replies.clientHeight + 1
+    && speechContentLayout.viewport.scrollHeight <= speechContentLayout.viewport.clientHeight
+    && speechContentLayout.viewport.scrollWidth <= speechContentLayout.viewport.clientWidth;
+  if (!speechContentFits) throw new Error(`Maximum-length speech content overflows or clips inside the speech window: ${JSON.stringify(speechContentLayout)}.`);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const compactContentWindowHeight = speech.getBounds().height;
+  const speechResizesForContent = longContentWindowHeight > compactContentWindowHeight
+    && longContentWindowHeight <= SPEECH_WINDOW_SIZE.height + 16
+    && compactContentWindowHeight <= SPEECH_WINDOW_MIN_SIZE.height + 16;
+  if (!speechResizesForContent) {
+    throw new Error(`Speech window did not resize to its content (long=${longContentWindowHeight}, compact=${compactContentWindowHeight}).`);
+  }
   const positionBeforeWander = speech.getBounds();
   brain.setActivity("wander");
   await new Promise((resolve) => setTimeout(resolve, 320));
@@ -553,7 +708,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   const speechNodeAccessDisabled = await speech.webContents.executeJavaScript(
     "typeof window.require === 'undefined' && typeof process === 'undefined'"
   ) as boolean;
-  const speechPreloadLockedDown = bridgeMethods === "dismissInteraction,engageInteraction,getInteraction,onInteraction,sendCustomReply,sendQuickReply"
+  const speechPreloadLockedDown = bridgeMethods === "dismissInteraction,engageInteraction,getInteraction,onInteraction,onPlacement,resizeSpeechWindow,sendCustomReply,sendQuickReply"
     && speechNodeAccessDisabled;
   if (!speechPreloadLockedDown) throw new Error(`Speech preload exposed an unexpected surface: ${bridgeMethods}`);
 
@@ -781,8 +936,13 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     roomCreaturePixels: roomRender.creatureVisible,
     loadedRoomProps: roomRender.loadedProps,
     settingsControlCount,
+    dialogueProvider,
     manualTalkWhileInitiationDisabled: true,
     speechWindowOnScreen,
+    speechEdgeBoundsValid,
+    speechTailAdapts,
+    speechContentFits,
+    speechResizesForContent,
     speechDoesNotStealFocus,
     speechPreloadLockedDown,
     speechFollowsWander,

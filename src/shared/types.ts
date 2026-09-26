@@ -1,5 +1,6 @@
 export type Location = "desktop" | "room";
 export type Mood = "neutral" | "chill" | "curious" | "excited" | "playful" | "sleepy" | "bored";
+export type DialogueProviderStatus = "Local voice" | "Groq ready";
 
 export type RoomPropId =
   | "door"
@@ -112,7 +113,7 @@ export interface ConversationMessage {
 export interface CreatureUtterance {
   text: string;
   quickResponses: string[];
-  emotion?: Mood;
+  emotion: Mood;
   endConversation: boolean;
 }
 

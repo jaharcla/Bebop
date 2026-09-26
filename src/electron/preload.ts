@@ -3,6 +3,7 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
+  DialogueProviderStatus,
   InteractionSession,
   Location,
   RoomPropId
@@ -11,6 +12,7 @@ import type {
 contextBridge.exposeInMainWorld("tinyMint", {
   isDevelopment: Boolean(process.env.VITE_DEV_SERVER_URL),
   getState: (): Promise<CreatureState> => ipcRenderer.invoke("state:get"),
+  getDialogueStatus: (): Promise<DialogueProviderStatus | null> => ipcRenderer.invoke("dialogue:status"),
   onState: (listener: (state: CreatureState) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, state: CreatureState) => listener(state);
     ipcRenderer.on("state:changed", handler);

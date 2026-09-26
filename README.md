@@ -42,7 +42,20 @@ Packaged Windows builds manage sign-in startup through Electron's login-item set
 
 Tiny Mint's small speech bubble is separate from the desktop sprite window. User-requested Talk works while the creature is paused and while creature-initiated interactions are disabled. Autonomous check-ins are desktop-only, conservative, cooldown-limited, and become less frequent after ignored bubbles. Conversation does not pause his life, but automatic room transitions are discouraged until an active exchange ends.
 
-Conversation works offline with a small deterministic local vocabulary. Optional Groq replies are enabled when `GROQ_API_KEY` is present in the environment that launches the app. `GROQ_MODEL` is optional and defaults to `openai/gpt-oss-20b`. Copy `.env.example` as a reference for those variable names; the app does not require or automatically load a `.env` file. For example, set them in PowerShell before `npm run dev`. The key stays in Electron's main process; requests time out and invalid or failed responses fall back to local dialogue.
+Conversation works offline with a small deterministic local vocabulary. To enable optional Groq replies during development, copy `.env.example` to `.env`, add your key, and run `npm run dev`:
+
+```powershell
+copy .env.example .env
+```
+
+Edit `.env`:
+
+```env
+GROQ_API_KEY=<paste key>
+GROQ_MODEL=openai/gpt-oss-20b
+```
+
+Development automatically loads this ignored file in Electron's main process. An environment-provided `GROQ_MODEL` overrides the default. The app starts normally and stays local if no key is configured. `.env` is not bundled with packaged builds; secret storage for packaged credentials is intentionally out of scope. The key never enters renderer code. Groq requests use strict structured output, time out, can be cancelled when a conversation closes, and fall back to local dialogue on service failures. Settings shows whether the active development voice is **Local voice** or **Groq ready** without revealing the key.
 
 Only a compact mood/activity/personality summary and the last few conversation turns are sent to Groq. Transcripts are ephemeral and are not written to the state store. Tiny Mint does not capture the screen, keystrokes, microphone, webcam, clipboard, or browser activity.
 

@@ -2,6 +2,7 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
+  DialogueProviderStatus,
   InteractionSession,
   Location,
   RoomPropId
@@ -12,6 +13,7 @@ declare global {
     tinyMint: {
       isDevelopment: boolean;
       getState(): Promise<CreatureState>;
+      getDialogueStatus(): Promise<DialogueProviderStatus | null>;
       onState(listener: (state: CreatureState) => void): () => void;
       click(): void;
       startDrag(screenX: number, screenY: number): void;
@@ -28,6 +30,8 @@ declare global {
       talk(): void;
       getInteraction(): Promise<InteractionSession | null>;
       onInteraction(listener: (session: InteractionSession | null) => void): () => void;
+      onPlacement(listener: (placement: "top" | "bottom") => void): () => void;
+      resizeSpeechWindow(height: number): void;
       sendQuickReply(text: string): void;
       sendCustomReply(text: string): void;
       dismissInteraction(): void;

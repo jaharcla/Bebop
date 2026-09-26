@@ -15,7 +15,7 @@ const MAX_CONVERSATION_MESSAGES = 6;
 const AUTONOMOUS_BUBBLE_TIMEOUT_MS = 25_000;
 const SESSION_FINISH_TIMEOUT_MS = 4_000;
 const MAX_CUSTOM_REPLY_LENGTH = 500;
-const initialUtterance: CreatureUtterance = { text: "...", quickResponses: [], endConversation: false };
+const initialUtterance: CreatureUtterance = { text: "...", quickResponses: [], emotion: "neutral", endConversation: false };
 
 export interface InteractionBrain {
   setLocation(location: "desktop"): void;
@@ -192,7 +192,9 @@ export class InteractionController {
         }
         return;
       }
-      void this.openSession("creature", trigger);
+      void this.openSession("creature", trigger).catch((error: unknown) => {
+        this.options.reportFailure?.(error);
+      });
     }, Math.max(0, eligibleAt - this.now()));
   }
 
@@ -249,7 +251,14 @@ export class InteractionController {
     } catch (error) {
       if (replyController.signal.aborted) return;
       this.options.reportFailure?.(error);
-      utterance = await this.localProvider.respond(request, replyController.signal);
+      try {
+        utterance = await this.localProvider.respond(request, replyController.signal);
+      } catch (fallbackError) {
+        if (replyController.signal.aborted) return;
+        this.options.reportFailure?.(fallbackError);
+        if (this.session?.id === session.id) this.closeSession();
+        throw fallbackError;
+      }
     } finally {
       if (this.activeReplyController === replyController) this.activeReplyController = undefined;
     }

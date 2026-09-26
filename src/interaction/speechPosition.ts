@@ -7,8 +7,8 @@ export interface Bounds {
 
 export function positionSpeechWindow(creature: Bounds, bubble: Pick<Bounds, "width" | "height">, workArea: Bounds): { x: number; y: number } {
   const gap = 8;
-  const maxX = workArea.x + workArea.width - bubble.width;
-  const maxY = workArea.y + workArea.height - bubble.height;
+  const maxX = workArea.x + workArea.width - bubble.width - 1;
+  const maxY = workArea.y + workArea.height - bubble.height - 1;
   const centeredX = creature.x + creature.width / 2 - bubble.width / 2;
   const aboveY = creature.y - bubble.height - gap;
   const hasRoomAbove = aboveY >= workArea.y;

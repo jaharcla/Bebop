@@ -5,6 +5,7 @@ import { validateUtterance } from "./responseValidation";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_TIMEOUT_MS = 10_000;
+export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b";
 
 const responseSchema = {
   type: "object",
