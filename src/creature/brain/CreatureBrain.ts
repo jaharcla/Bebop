@@ -319,6 +319,7 @@ export class CreatureBrain {
 
   private completePlan(plan: ActionPlan): void {
     this.state.habits = recordHabit(this.state.habits, plan.habitActivity, plan.habitProp);
+    if (plan.habitProp === "bong" || plan.habitActivity === "bong") this.state.lastBongUseAt = Date.now();
     if (plan.habitActivity === "draw" && this.random() < 0.65) {
       const now = Date.now();
       const recent = this.state.habits.recentProps;
@@ -375,6 +376,7 @@ export class CreatureBrain {
     else if (activity === "exercise") { this.state.energy -= 5; this.state.stimulation += 6; }
     else if (activity === "play") { this.state.boredom -= 9; this.state.stimulation += 8; }
     else if (activity === "music") { this.state.comfort += 4; this.state.stimulation += 3; }
+    else if (activity === "bong") { this.state.comfort += 3; this.state.boredom -= 3; this.state.stimulation += 1; }
     else if (activity === "inspect") this.state.curiosity -= 3;
     this.state = clampState(this.state);
   }

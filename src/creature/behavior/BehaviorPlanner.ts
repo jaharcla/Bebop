@@ -1,6 +1,6 @@
 import type { CreatureState } from "../../shared/types";
 import type { ActionPlan } from "../actions/ActionPlan";
-import { artRoutine, bookRoutine, playRoutine, roomExitRoutine, simplePropRoutine, wateringRoutine } from "../actions/actionChains";
+import { artRoutine, bongRoutine, bookRoutine, playRoutine, roomExitRoutine, simplePropRoutine, wateringRoutine } from "../actions/actionChains";
 import type { RandomSource } from "./behaviorEngine";
 import { scoreRoomBehaviors, type RoomBehaviorKind } from "./behaviorScoring";
 
@@ -21,6 +21,7 @@ export class BehaviorPlanner {
       : kind === "water" ? wateringRoutine(now)
       : kind === "art" ? artRoutine(now)
       : kind === "play" ? playRoutine(now)
+      : kind === "bong" ? bongRoutine(now)
       : kind === "exit" ? roomExitRoutine(now)
       : simplePropRoutine(kind === "sleep" ? "bed" : kind === "exercise" ? "dumbbell" : kind === "music" ? "music-player" : "rug", now, 40);
     const patienceFactor = 0.8 + state.personality.patience * 0.45;

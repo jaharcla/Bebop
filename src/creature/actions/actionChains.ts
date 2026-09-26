@@ -38,15 +38,18 @@ export const roomExitRoutine = (now: number, priority = 40): ActionPlan => plan(
   move("door"), { type: "face", entity: "door" }, use("door", "leave", "visitDesktop", "walk", 700), { type: "transition", location: "desktop" }
 ], now, priority);
 
+export const bongRoutine = (now: number, priority = 40): ActionPlan => plan("take a bong break", "bong", "bong", [
+  move("bong"), { type: "face", entity: "bong" }, use("bong", "use", "bong", "sit", 3_200),
+  { type: "animate", activity: "sit", animation: "sit", durationMs: 4_000, entity: "bong" }
+], now, priority);
+
 export function simplePropRoutine(entity: RoomPropId, now: number, priority = 100): ActionPlan {
   if (entity === "bookshelf" || entity === "book") return bookRoutine(now, priority);
   if (entity === "plant" || entity === "watering-can") return wateringRoutine(now, priority);
   if (entity === "desk" || entity === "sketchbook" || entity === "corkboard") return artRoutine(now, priority);
   if (entity === "ball" || entity === "toy-box") return playRoutine(now, priority);
   if (entity === "door") return roomExitRoutine(now, priority);
-  if (entity === "bong") return plan("inspect the animated bonus art", "inspect", "bong", [
-    move("bong"), { type: "face", entity: "bong" }, use("bong", "inspect", "inspect", "reach-right", 3_000)
-  ], now, priority);
+  if (entity === "bong") return bongRoutine(now, priority);
   const affordance = roomEntities[entity].affordances[0];
   const duration = (affordance.durationMs[0] + affordance.durationMs[1]) / 2;
   return plan(`use the ${entity}`, affordance.activity, entity, [move(entity), use(entity, affordance.id, affordance.activity, affordance.animation, duration)], now, priority);
