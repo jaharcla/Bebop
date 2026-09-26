@@ -27,8 +27,9 @@ function render(next: InteractionSession | null): void {
   you.textContent = lastUserMessage ? `you: ${lastUserMessage.text}` : "";
   utterance.textContent = next.current.text;
   quickReplies.replaceChildren();
-  const repliesDisabled = next.waitingForResponse || next.messages.length >= 6;
-  for (const text of next.current.quickResponses.slice(0, 3)) {
+  const repliesDisabled = next.waitingForResponse || next.current.endConversation || next.messages.length >= 6;
+  const visibleQuickReplies = next.current.endConversation ? [] : next.current.quickResponses.slice(0, 3);
+  for (const text of visibleQuickReplies) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = text;
