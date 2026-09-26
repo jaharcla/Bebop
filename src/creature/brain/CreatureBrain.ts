@@ -7,7 +7,7 @@ import { animationFor, chooseActivity, type RandomSource } from "../behavior/beh
 import { recordHabit } from "../behavior/habitModel";
 import { clampState, defaultState } from "../state/defaultState";
 import { facingTowardProp } from "../world/roomEntities";
-import type { Activity, CorkboardSketchKind, CreaturePreferences, CreatureState, FacingDirection, Location, RoomPropId, WorldPosition } from "../../shared/types";
+import type { Activity, CorkboardSketchKind, CreaturePreferences, CreatureState, DesktopAwarenessContext, FacingDirection, Location, RoomPropId, WorldPosition } from "../../shared/types";
 
 export type StateListener = (state: CreatureState) => void;
 
@@ -18,6 +18,7 @@ export class CreatureBrain {
   private nextDecisionAt = Date.now() + 14_000;
   private lastNeedsUpdate = Date.now();
   private conversationActive = false;
+  private desktopContext: DesktopAwarenessContext | null = null;
   private suspendedAt: number | undefined;
   private readonly planner: BehaviorPlanner;
   private readonly executor: ActionExecutor;
@@ -93,7 +94,22 @@ export class CreatureBrain {
 
   recordCreatureConversation(): void {
     this.state.lastCreatureInteraction = Date.now();
+    if (!this.state.onboarding.introduced) this.state.onboarding = { introduced: true };
     this.publish();
+  }
+
+  setDesktopContext(context: DesktopAwarenessContext | null): void {
+    const wasFullscreen = this.desktopContext?.fullscreen ?? false;
+    this.desktopContext = context ? { ...context } : null;
+    if (this.state.location !== "desktop") return;
+    if (context?.fullscreen && !wasFullscreen && ["wander", "observe"].includes(this.state.currentActivity)) {
+      this.state.currentActivity = "idle";
+      this.state.currentAnimation = "idle";
+      this.nextDecisionAt = Date.now() + 12_000;
+      this.publish();
+    } else if (!context?.fullscreen && wasFullscreen && !this.state.preferences.paused) {
+      this.nextDecisionAt = Date.now() + 2_000;
+    }
   }
 
   setPosition(x: number, y: number, options: { notify?: boolean; userInteraction?: boolean; preserveFacing?: boolean } = {}): void {
@@ -200,7 +216,7 @@ export class CreatureBrain {
       }
       this.startPlan(this.planner.chooseRoomPlan(this.state, now));
     } else {
-      this.setActivity(chooseActivity(this.state, this.random, this.conversationActive));
+      this.setActivity(chooseActivity(this.state, this.random, this.conversationActive, this.desktopContext));
     }
   }
 

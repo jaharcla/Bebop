@@ -1,4 +1,4 @@
-import type { Activity, CreatureState } from "../../shared/types";
+import type { Activity, CreatureState, DesktopAwarenessContext } from "../../shared/types";
 import { noveltyModifier } from "./habitModel";
 
 export type RandomSource = () => number;
@@ -8,18 +8,46 @@ interface WeightedActivity {
   weight: number;
 }
 
-export function chooseActivity(state: CreatureState, random: RandomSource = Math.random, conversationActive = false): Activity {
+export function chooseActivity(
+  state: CreatureState,
+  random: RandomSource = Math.random,
+  conversationActive = false,
+  desktopContext: DesktopAwarenessContext | null = null
+): Activity {
   if (state.preferences.paused) return state.currentActivity;
+
+  const contextActivity = desktopContext?.activity ?? "unknown";
+  const userPresent = desktopContext?.userPresent ?? true;
+  const fullscreen = desktopContext?.fullscreen ?? false;
+  const focusedWork = ["coding", "writing", "reading", "drawing"].includes(contextActivity);
+  const observeBoost = contextActivity === "drawing" ? 1.8
+    : focusedWork ? 1.45
+      : contextActivity === "chatting" ? 1.25
+        : contextActivity === "browsing" ? 1.12
+          : 1;
+  const quietMultiplier = fullscreen ? 0.04 : state.preferences.quietMode ? 0.3 : 1;
 
   const choices: WeightedActivity[] = state.location === "desktop"
     ? [
-        { activity: "idle", weight: (24 + state.comfort * 0.12) * (0.8 + state.personality.patience * 0.35) },
-        ...(state.preferences.roamingEnabled ? [{ activity: "wander" as const, weight: (15 + state.boredom * 0.22) * (0.75 + state.personality.chaos * 0.55) }] : []),
-        { activity: "observe", weight: (8 + state.curiosity * 0.17) * (0.65 + state.personality.curiosity * 0.7 + state.personality.confidence * 0.18 + state.personality.affection * 0.15) * (1.08 - state.personality.independence * 0.18) },
-        { activity: "rest", weight: Math.max(3, 31 - state.energy * 0.3) * (0.8 + state.personality.patience * 0.3) },
+        { activity: "idle", weight: (24 + state.comfort * 0.12) * (0.8 + state.personality.patience * 0.35) * (fullscreen ? 2.4 : 1) },
+        ...(state.preferences.roamingEnabled ? [{ activity: "wander" as const, weight: (15 + state.boredom * 0.22) * (0.75 + state.personality.chaos * 0.55) * quietMultiplier * (userPresent ? 1 : 0.55) }] : []),
+        { activity: "observe", weight: (8 + state.curiosity * 0.17) * (0.65 + state.personality.curiosity * 0.7 + state.personality.confidence * 0.18 + state.personality.affection * 0.15) * (1.08 - state.personality.independence * 0.18) * observeBoost * quietMultiplier * (userPresent ? 1 : 0.25) },
+        { activity: "rest", weight: Math.max(3, 31 - state.energy * 0.3) * (0.8 + state.personality.patience * 0.3) * (fullscreen ? 1.6 : 1) },
+        ...(desktopContext && userPresent && !fullscreen && focusedWork ? [{
+          activity: "sit" as const,
+          weight: (6 + state.personality.patience * 10 + state.personality.affection * 8) * (1.12 - state.personality.independence * 0.22)
+        }] : []),
+        ...(desktopContext && userPresent && !fullscreen && contextActivity === "reading" ? [{
+          activity: "read" as const,
+          weight: 5 + state.personality.curiosity * 11
+        }] : []),
+        ...(desktopContext && userPresent && !fullscreen && contextActivity === "media" ? [{
+          activity: "music" as const,
+          weight: 4 + state.personality.creativity * 8
+        }] : []),
         ...(state.preferences.roomVisitsEnabled && !conversationActive ? [{
           activity: "visitRoom" as const,
-          weight: (state.energy < 35 ? 22 : 5) * (0.55 + state.personality.independence * 0.9) * (1.2 - state.personality.affection * 0.25)
+          weight: (state.energy < 35 ? 22 : 5) * (0.55 + state.personality.independence * 0.9) * (1.2 - state.personality.affection * 0.25) * (!userPresent ? 1.55 : contextActivity === "drawing" ? 1 + state.personality.creativity * 0.8 : 1)
         }] : [])
       ]
     : [
@@ -66,6 +94,6 @@ export function animationFor(activity: Activity, location: CreatureState["locati
   if (activity === "carry" || activity === "show") return "carry";
   if (activity === "inspect") return "reach-right";
   if (activity === "play") return "tap";
-  if (activity === "music") return "sit";
+  if (activity === "music" || activity === "bong") return "sit";
   return "idle";
 }

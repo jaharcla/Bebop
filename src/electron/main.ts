@@ -6,6 +6,7 @@ import { CreatureBrain } from "../creature/brain/CreatureBrain";
 import { loadDevelopmentEnvironment } from "./developmentEnvironment";
 import { InteractionController } from "../interaction/InteractionController";
 import { isUserPresentFromSystemIdle } from "../interaction/basicAwareness";
+import { classifyDesktopActivity, FOREGROUND_SAMPLE_INTERVAL_MS, isFullscreenWindow, sampleWindowsForegroundWindow } from "../interaction/desktopAwareness";
 import { createDialogueProvider as selectDialogueProvider } from "../interaction/dialogue/createDialogueProvider";
 import type { DialogueProvider } from "../interaction/dialogue/DialogueProvider";
 import { LocalDialogueProvider } from "../interaction/dialogue/LocalDialogueProvider";
@@ -16,6 +17,7 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
+  DesktopAwarenessContext,
   DialogueActionResult,
   DialogueProviderStatus,
   DialogueSettingsStatus,
@@ -44,6 +46,8 @@ let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
 let cursorTimer: NodeJS.Timeout | undefined;
 let awarenessTimer: NodeJS.Timeout | undefined;
+let awarenessSampling = false;
+let desktopAwarenessContext: DesktopAwarenessContext | null = null;
 let qaPresenceOverride: boolean | null = null;
 let displayChangedHandler: (() => void) | undefined;
 let suspendHandler: (() => void) | undefined;
@@ -420,7 +424,10 @@ function updateMovement(state: CreatureState): void {
         const completed = desktopGoal.kind;
         desktopGoal = null;
         if (completed === "exit") brain.setLocation("room");
-        else brain.setActivity("idle");
+        else if (completed === "cursor" && desktopAwarenessContext?.userPresent && !desktopAwarenessContext.fullscreen) {
+          const activity = desktopAwarenessContext.activity;
+          brain.setActivity(activity === "reading" ? "read" : activity === "media" ? "music" : ["coding","writing","drawing","chatting"].includes(activity) ? "sit" : "idle");
+        } else brain.setActivity("idle");
         return;
       }
       const proposed = clampPosition(x + dx / distance * 3, y + dy / distance * 3);
@@ -431,16 +438,28 @@ function updateMovement(state: CreatureState): void {
   }
 }
 
-function sampleSystemAwareness(): void {
-  if (!brain || !interactionController || !brain.snapshot().privacy.awarenessEnabled) return;
-  if (qaPresenceOverride !== null) {
-    interactionController.setUserPresent(qaPresenceOverride);
-    return;
-  }
+async function sampleSystemAwareness(): Promise<void> {
+  if (!brain || !interactionController || !brain.snapshot().privacy.awarenessEnabled || awarenessSampling) return;
+  awarenessSampling = true;
   try {
-    interactionController.setUserPresent(isUserPresentFromSystemIdle(powerMonitor.getSystemIdleTime()));
+    const systemPresent = isUserPresentFromSystemIdle(powerMonitor.getSystemIdleTime());
+    const foreground = await sampleWindowsForegroundWindow();
+    let fullscreen = false;
+    let activity: DesktopAwarenessContext["activity"] = systemPresent ? "unknown" : "idle";
+    if (foreground) {
+      activity = classifyDesktopActivity(foreground.processName, foreground.title);
+      const center = { x: Math.round(foreground.bounds.x + foreground.bounds.width / 2), y: Math.round(foreground.bounds.y + foreground.bounds.height / 2) };
+      fullscreen = isFullscreenWindow(foreground.bounds, screen.getDisplayNearestPoint(center).bounds);
+    }
+    const context: DesktopAwarenessContext = { userPresent: qaPresenceOverride ?? systemPresent, activity, fullscreen, sampledAt: Date.now() };
+    desktopAwarenessContext = context;
+    brain.setDesktopContext(context);
+    interactionController.setUserPresent(context.userPresent);
+    interactionController.setAttentionSuppressed(context.fullscreen);
   } catch (error) {
-    console.warn("Could not read local system idle time for Basic Awareness.", error);
+    console.warn("Could not sample local Basic Awareness context.", error);
+  } finally {
+    awarenessSampling = false;
   }
 }
 
@@ -449,12 +468,16 @@ function refreshSystemAwareness(): void {
   if (!brain.snapshot().privacy.awarenessEnabled) {
     if (awarenessTimer) clearInterval(awarenessTimer);
     awarenessTimer = undefined;
+    awarenessSampling = false;
     qaPresenceOverride = null;
+    desktopAwarenessContext = null;
+    brain.setDesktopContext(null);
     interactionController.setUserPresent(true);
+    interactionController.setAttentionSuppressed(false);
     return;
   }
-  sampleSystemAwareness();
-  if (!awarenessTimer) awarenessTimer = setInterval(sampleSystemAwareness, 15_000);
+  void sampleSystemAwareness();
+  if (!awarenessTimer) awarenessTimer = setInterval(() => { void sampleSystemAwareness(); }, FOREGROUND_SAMPLE_INTERVAL_MS);
 }
 
 function chooseDesktopGoal(state: CreatureState): { x: number; y: number; kind: "wander" | "cursor" | "exit" | "enter" } {

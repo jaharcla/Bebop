@@ -3,6 +3,7 @@ import type { DialogueProvider } from "./DialogueProvider";
 import { validateUtterance } from "./responseValidation";
 
 const openingLines: Record<DialogueRequest["trigger"], readonly string[]> = {
+  FIRST_HELLO: ["uh hi", "okay so... this is your computer?", "hi. i’m looking around", "wait, you’re actually here"],
   BECAME_CURIOUS: ["whatcha doing", "what are you making", "wait, what’s that"],
   BECAME_BORED: ["i’ve inspected everything over here", "huh. it got quiet", "i was gonna say something but i forgot"],
   RETURNED_TO_DESKTOP: ["i’m back. what’d i miss", "hey again", "okay, where was i"],
