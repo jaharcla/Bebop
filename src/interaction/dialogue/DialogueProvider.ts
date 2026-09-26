@@ -1,5 +1,5 @@
 import type { CreatureUtterance, DialogueRequest } from "../../shared/types";
 
 export interface DialogueProvider {
-  respond(request: DialogueRequest): Promise<CreatureUtterance>;
+  respond(request: DialogueRequest, signal?: AbortSignal): Promise<CreatureUtterance>;
 }
