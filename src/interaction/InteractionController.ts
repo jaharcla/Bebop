@@ -15,7 +15,7 @@ const MAX_CONVERSATION_MESSAGES = 6;
 const AUTONOMOUS_BUBBLE_TIMEOUT_MS = 25_000;
 const SESSION_FINISH_TIMEOUT_MS = 4_000;
 const MAX_CUSTOM_REPLY_LENGTH = 500;
-const initialUtterance: CreatureUtterance = { text: "...", quickResponses: [] };
+const initialUtterance: CreatureUtterance = { text: "...", quickResponses: [], endConversation: false };
 
 export interface InteractionBrain {
   setLocation(location: "desktop"): void;
@@ -50,6 +50,7 @@ export class InteractionController {
   private notBefore: number;
   private engaged = false;
   private disposed = false;
+  private activeReplyController: AbortController | undefined;
 
   constructor(private readonly options: InteractionControllerOptions) {
     this.now = options.now ?? Date.now;
@@ -239,20 +240,26 @@ export class InteractionController {
     const session = this.session;
     if (!session) return;
     const request = buildRequest(trigger, this.options.getState(), session.messages);
+    this.activeReplyController?.abort();
+    const replyController = new AbortController();
+    this.activeReplyController = replyController;
     let utterance: CreatureUtterance;
     try {
-      utterance = validateUtterance(await this.options.provider.respond(request));
+      utterance = validateUtterance(await this.options.provider.respond(request, replyController.signal));
     } catch (error) {
+      if (replyController.signal.aborted) return;
       this.options.reportFailure?.(error);
-      utterance = await this.localProvider.respond(request);
+      utterance = await this.localProvider.respond(request, replyController.signal);
+    } finally {
+      if (this.activeReplyController === replyController) this.activeReplyController = undefined;
     }
-    if (this.session?.id !== session.id) return;
+    if (this.session?.id !== session.id || replyController.signal.aborted) return;
     session.current = utterance;
     session.waitingForResponse = false;
     session.messages.push({ role: "creature", text: utterance.text, at: this.now() });
     session.messages = session.messages.slice(-MAX_CONVERSATION_MESSAGES);
     this.options.brain.recordCreatureConversation();
-    if (session.messages.length >= MAX_CONVERSATION_MESSAGES) {
+    if (utterance.endConversation || session.messages.length >= MAX_CONVERSATION_MESSAGES) {
       session.expiresAt = this.now() + SESSION_FINISH_TIMEOUT_MS;
       this.scheduleSessionTimeout(SESSION_FINISH_TIMEOUT_MS);
     }
@@ -268,6 +275,8 @@ export class InteractionController {
   }
 
   private closeSession(): void {
+    this.activeReplyController?.abort();
+    this.activeReplyController = undefined;
     if (this.sessionTimer) clearTimeout(this.sessionTimer);
     this.sessionTimer = undefined;
     this.session = null;
