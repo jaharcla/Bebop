@@ -113,6 +113,7 @@ export interface CreatureUtterance {
   text: string;
   quickResponses: string[];
   emotion?: Mood;
+  endConversation: boolean;
 }
 
 export interface InteractionSession {
