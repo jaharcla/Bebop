@@ -3,17 +3,33 @@ import type { MenuItem } from "electron";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { CreatureBrain } from "../creature/brain/CreatureBrain";
+import { InteractionController } from "../interaction/InteractionController";
+import { FallbackDialogueProvider, GroqDialogueProvider } from "../interaction/dialogue/GroqDialogueProvider";
+import type { DialogueProvider } from "../interaction/dialogue/DialogueProvider";
+import { LocalDialogueProvider } from "../interaction/dialogue/LocalDialogueProvider";
+import { positionSpeechWindow as calculateSpeechPosition } from "../interaction/speechPosition";
 import { StateStore } from "../persistence/StateStore";
-import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../shared/types";
+import type {
+  Activity,
+  CreaturePreferences,
+  CreatureState,
+  InteractionSession,
+  Location,
+  RoomPropId
+} from "../shared/types";
 
 const OVERLAY_SIZE = 192;
+const SPEECH_WINDOW_SIZE = { width: 340, height: 190 };
 let overlayWindow: BrowserWindow | null = null;
 let roomWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let speechWindow: BrowserWindow | null = null;
+let speechWindowReady = false;
 let tray: Tray | null = null;
 let trayPauseItem: MenuItem | undefined;
 let brain: CreatureBrain;
 let store: StateStore;
+let interactionController: InteractionController;
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
 let dragOrigin: { pointerX: number; pointerY: number; windowX: number; windowY: number } | null = null;
@@ -24,11 +40,11 @@ const devUrl = process.env.VITE_DEV_SERVER_URL;
 const smokeUserData = process.env.TINY_MINT_SMOKE_USER_DATA;
 if (smokeUserData) app.setPath("userData", smokeUserData);
 
-function rendererPath(page: "index.html" | "room.html" | "settings.html"): string {
+function rendererPath(page: "index.html" | "room.html" | "settings.html" | "speech.html"): string {
   return devUrl ? `${devUrl}/${page}` : join(app.getAppPath(), "dist", page);
 }
 
-async function loadRenderer(window: BrowserWindow, page: "index.html" | "room.html" | "settings.html"): Promise<void> {
+async function loadRenderer(window: BrowserWindow, page: "index.html" | "room.html" | "settings.html" | "speech.html"): Promise<void> {
   if (devUrl) await window.loadURL(rendererPath(page));
   else await window.loadFile(rendererPath(page));
 }
@@ -63,6 +79,98 @@ function createOverlay(state: CreatureState): void {
   overlayWindow.on("closed", () => { overlayWindow = null; });
   void loadRenderer(overlayWindow, "index.html");
   if (state.location === "room") overlayWindow.hide();
+}
+
+function positionSpeechWindow(): void {
+  if (!speechWindow || speechWindow.isDestroyed() || !overlayWindow || overlayWindow.isDestroyed()) return;
+  if (brain.snapshot().location !== "desktop") {
+    speechWindow.hide();
+    return;
+  }
+  const creature = overlayWindow.getBounds();
+  const bubbleBounds = speechWindow.getBounds();
+  const center = { x: creature.x + creature.width / 2, y: creature.y + creature.height / 2 };
+  const workArea = screen.getDisplayNearestPoint(center).workArea;
+  const position = positionSpeechWindowForDisplay(creature, workArea, bubbleBounds);
+  speechWindow.setBounds({ ...position, width: bubbleBounds.width, height: bubbleBounds.height }, false);
+}
+
+function positionSpeechWindowForDisplay(
+  creature: Electron.Rectangle,
+  workArea: Electron.Rectangle,
+  bubbleSize: Pick<Electron.Rectangle, "width" | "height"> = SPEECH_WINDOW_SIZE
+): { x: number; y: number } {
+  return calculateSpeechPosition(creature, bubbleSize, workArea);
+}
+
+function showSpeechSession(session: InteractionSession | null): void {
+  if (!session) {
+    speechWindow?.hide();
+    return;
+  }
+  if (!speechWindow || speechWindow.isDestroyed()) {
+    const position = calculateSpeechPosition(
+      overlayWindow?.getBounds() ?? { x: 80, y: 80, width: OVERLAY_SIZE, height: OVERLAY_SIZE },
+      SPEECH_WINDOW_SIZE,
+      screen.getDisplayNearestPoint(overlayWindow?.getBounds() ?? { x: 80, y: 80 }).workArea
+    );
+    speechWindowReady = false;
+    speechWindow = new BrowserWindow({
+      ...SPEECH_WINDOW_SIZE,
+      ...position,
+      transparent: true,
+      frame: false,
+      resizable: false,
+      hasShadow: false,
+      skipTaskbar: true,
+      show: false,
+      alwaysOnTop: brain.snapshot().preferences.alwaysOnTop,
+      backgroundColor: "#00000000",
+      webPreferences: { preload: join(__dirname, "speechPreload.js"), contextIsolation: true, nodeIntegration: false }
+    });
+    speechWindow.setAlwaysOnTop(brain.snapshot().preferences.alwaysOnTop, "floating");
+    speechWindow.on("closed", () => {
+      speechWindow = null;
+      speechWindowReady = false;
+    });
+    speechWindow.webContents.on("did-finish-load", () => {
+      speechWindowReady = true;
+      const current = interactionController?.getSession();
+      if (current && speechWindow && !speechWindow.isDestroyed()) {
+        speechWindow.webContents.send("interaction:changed", current);
+        positionSpeechWindow();
+        speechWindow.showInactive();
+      }
+    });
+    void loadRenderer(speechWindow, "speech.html");
+  } else if (speechWindowReady) {
+    speechWindow.webContents.send("interaction:changed", session);
+  }
+  positionSpeechWindow();
+  if (speechWindowReady && !speechWindow.isVisible()) speechWindow.showInactive();
+}
+
+function startUserTalk(): void {
+  if (brain.snapshot().location === "room") roomWindow?.hide();
+  void interactionController.startUserSession().catch((error: unknown) => {
+    console.warn("Could not start a Tiny Mint conversation.", error);
+  });
+}
+
+function createDialogueProvider(): DialogueProvider {
+  const local = new LocalDialogueProvider();
+  if (process.env.TINY_MINT_SMOKE_OUTPUT) return local;
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  const model = process.env.GROQ_MODEL?.trim();
+  if (!apiKey || !model) {
+    if (apiKey || model) console.warn("Both GROQ_API_KEY and GROQ_MODEL are needed; Tiny Mint will use local dialogue.");
+    return local;
+  }
+  const groq = new GroqDialogueProvider(apiKey, model);
+  return new FallbackDialogueProvider(groq, local, (error) => {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Groq dialogue unavailable; using local replies (${detail}).`);
+  });
 }
 
 function openRoom(): void {
@@ -109,6 +217,7 @@ function openSettings(): void {
 }
 
 function sendToRoom(): void {
+  interactionController?.dismiss();
   brain.setLocation("room");
   if (roomWindow && !roomWindow.isDestroyed()) {
     roomWindow.show();
@@ -123,12 +232,14 @@ function broadcast(state: CreatureState): void {
     if (window && !window.isDestroyed()) window.webContents.send("state:changed", state);
   }
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send("state:changed", state);
+  interactionController?.observeState(state);
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if (state.location === "desktop") overlayWindow.showInactive();
     else overlayWindow.hide();
   }
   if (trayPauseItem) trayPauseItem.label = state.preferences.paused ? "Resume" : "Pause";
   updateMovement(state);
+  positionSpeechWindow();
   scheduleSave();
 }
 
@@ -158,6 +269,7 @@ function updateMovement(state: CreatureState): void {
       if (proposed.x === x) wanderDirection *= -1;
       overlayWindow.setPosition(proposed.x, proposed.y);
       brain.setPosition(proposed.x, proposed.y, { notify: false });
+      positionSpeechWindow();
     }, 80);
   }
 }
@@ -167,6 +279,7 @@ function showCreatureMenu(): void {
   Menu.buildFromTemplate([
     { label: "Open Tiny Mint's room", click: openRoom },
     { label: "Settings", click: openSettings },
+    { label: "Talk", click: startUserTalk },
     { type: "separator" },
     { label: "Send to room", enabled: state.location !== "room", click: sendToRoom },
     { label: "Call to desktop", enabled: state.location !== "desktop", click: () => brain.setLocation("desktop") },
@@ -184,6 +297,7 @@ function createTray(): void {
   const menu = Menu.buildFromTemplate([
     { label: "Open room", click: openRoom },
     { label: "Settings", click: openSettings },
+    { label: "Talk", click: startUserTalk },
     { label: "Call to desktop", click: () => brain.setLocation("desktop") },
     { label: "Send to room", click: sendToRoom },
     { type: "separator" },
@@ -198,6 +312,10 @@ function createTray(): void {
 
 function isApplicationWindow(sender: Electron.WebContents): boolean {
   return [overlayWindow, roomWindow, settingsWindow].some((window) => window?.webContents === sender);
+}
+
+function isSpeechWindow(sender: Electron.WebContents): boolean {
+  return speechWindow?.webContents === sender;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -246,14 +364,17 @@ function applyStartupPreference(enabled: boolean): void {
 
 function registerIpc(): void {
   ipcMain.handle("state:get", () => brain.snapshot());
+  ipcMain.handle("interaction:get", (event) => isSpeechWindow(event.sender) ? interactionController.getSession() : null);
   ipcMain.on("creature:click", (event) => { if (isApplicationWindow(event.sender)) brain.interact("click"); });
   ipcMain.on("room:open", (event) => { if (isApplicationWindow(event.sender)) openRoom(); });
   ipcMain.on("settings:open", (event) => { if (isApplicationWindow(event.sender)) openSettings(); });
   ipcMain.on("menu:open", (event) => { if (isApplicationWindow(event.sender)) showCreatureMenu(); });
   ipcMain.on("state:location", (event, location: unknown) => {
     if (!isApplicationWindow(event.sender)) return;
-    if (location === "desktop" || location === "room") brain.setLocation(location as Location);
-    else console.warn("Ignored invalid location update from renderer.", location);
+    if (location === "desktop" || location === "room") {
+      if (location === "room") interactionController.dismiss();
+      brain.setLocation(location as Location);
+    } else console.warn("Ignored invalid location update from renderer.", location);
   });
   ipcMain.on("state:activity", (event, activity: unknown) => {
     if (!isApplicationWindow(event.sender)) return;
@@ -276,8 +397,36 @@ function registerIpc(): void {
     if (Object.hasOwn(preferences, "startWithWindows")) applyStartupPreference(preferences.startWithWindows!);
     if (Object.hasOwn(preferences, "alwaysOnTop")) {
       overlayWindow?.setAlwaysOnTop(preferences.alwaysOnTop!, "floating");
+      speechWindow?.setAlwaysOnTop(preferences.alwaysOnTop!, "floating");
     }
     brain.patchPreferences(preferences);
+  });
+  ipcMain.on("interaction:start", (event) => {
+    if (isApplicationWindow(event.sender) && !isSpeechWindow(event.sender)) startUserTalk();
+  });
+  ipcMain.on("interaction:reply", (event, reply: unknown) => {
+    const session = interactionController.getSession();
+    if (!isSpeechWindow(event.sender) || typeof reply !== "string" || reply.length > 40 || !session || session.waitingForResponse
+      || !session?.current.quickResponses.includes(reply)) {
+      console.warn("Ignored invalid quick reply from renderer.");
+      return;
+    }
+    void interactionController.reply(reply);
+  });
+  ipcMain.on("interaction:custom-reply", (event, reply: unknown) => {
+    const session = interactionController.getSession();
+    if (!isSpeechWindow(event.sender) || typeof reply !== "string" || reply.length > 500 || !reply.trim()
+      || !session || session.waitingForResponse) {
+      console.warn("Ignored invalid custom reply from renderer.");
+      return;
+    }
+    void interactionController.reply(reply);
+  });
+  ipcMain.on("interaction:dismiss", (event) => {
+    if (isSpeechWindow(event.sender)) interactionController.dismiss();
+  });
+  ipcMain.on("interaction:engage", (event) => {
+    if (isSpeechWindow(event.sender)) interactionController.engage();
   });
   ipcMain.on("state:reset", (event) => { if (isApplicationWindow(event.sender)) brain.reset(); });
   ipcMain.on("drag:start", (event, point: unknown) => {
@@ -292,6 +441,7 @@ function registerIpc(): void {
     if (!overlayWindow || !dragOrigin) return;
     const position = clampPosition(dragOrigin.windowX + point.screenX - dragOrigin.pointerX, dragOrigin.windowY + point.screenY - dragOrigin.pointerY);
     overlayWindow.setPosition(position.x, position.y);
+    positionSpeechWindow();
   });
   ipcMain.on("drag:end", (event, moved: unknown) => {
     if (!isApplicationWindow(event.sender) || typeof moved !== "boolean") return;
@@ -308,6 +458,10 @@ function registerIpc(): void {
 }
 
 async function runSmokeTest(outputDirectory: string): Promise<void> {
+  const watchdog = setTimeout(() => {
+    console.error(`TINY_MINT_SMOKE_FAILED Timed out after 30 seconds (location=${brain.snapshot().location}, activity=${brain.snapshot().currentActivity}, roomWindow=${Boolean(roomWindow)}, roomUrl=${roomWindow?.webContents.getURL() ?? "none"}).`);
+    app.exit(1);
+  }, 30_000);
   await new Promise((resolve) => setTimeout(resolve, 1_200));
   if (!overlayWindow) throw new Error("Expected the Tiny Mint overlay window.");
   const overlayPixels = await overlayWindow.webContents.executeJavaScript(`
@@ -320,7 +474,6 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   `) as boolean;
   if (!overlayPixels) throw new Error("Overlay canvas did not render the sprite atlas.");
   mkdirSync(outputDirectory, { recursive: true });
-  writeFileSync(join(outputDirectory, "overlay.png"), (await overlayWindow.capturePage()).toPNG());
 
   openSettings();
   const settings = settingsWindow;
@@ -339,6 +492,112 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     `);
     await new Promise((resolve) => setTimeout(resolve, 100));
   };
+  await setCheckbox("interactionsEnabled", false);
+  const userInteractionTime = brain.snapshot().lastUserInteraction;
+  await overlayWindow.webContents.executeJavaScript("window.tinyMint.talk()");
+  const speechDeadline = Date.now() + 5_000;
+  while ((!speechWindow || !speechWindowReady || !speechWindow.isVisible()
+    || !interactionController.getSession() || interactionController.getSession()?.waitingForResponse)
+    && Date.now() < speechDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const speech = speechWindow;
+  const session = interactionController.getSession();
+  if (!speech || speech.isDestroyed() || !speech.isVisible() || !session || session.waitingForResponse || session.current.text === "...") {
+    throw new Error("User-requested Talk did not produce a visible local speech bubble.");
+  }
+  const energyAtConversationStart = brain.snapshot().energy;
+  const speechDoesNotStealFocus = !speech.isFocused();
+  if (!speechDoesNotStealFocus) throw new Error("An appearing speech bubble stole focus.");
+  const speechBounds = speech.getBounds();
+  const overlayBoundsForSpeech = overlayWindow.getBounds();
+  const speechDisplay = screen.getDisplayNearestPoint({
+    x: overlayBoundsForSpeech.x + overlayBoundsForSpeech.width / 2,
+    y: overlayBoundsForSpeech.y + overlayBoundsForSpeech.height / 2
+  });
+  const workArea = speechDisplay.workArea;
+  const speechWindowOnScreen = speechBounds.x >= workArea.x && speechBounds.y >= workArea.y
+    && speechBounds.x + speechBounds.width <= workArea.x + workArea.width
+    && speechBounds.y + speechBounds.height <= workArea.y + workArea.height;
+  if (!speechWindowOnScreen) throw new Error(`Speech window is outside the display work area: ${JSON.stringify(speechBounds)}`);
+  const positionBeforeWander = speech.getBounds();
+  brain.setActivity("wander");
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  const positionAfterWander = speech.getBounds();
+  const speechFollowsWander = positionAfterWander.x !== positionBeforeWander.x
+    || positionAfterWander.y !== positionBeforeWander.y;
+  if (!speechFollowsWander) throw new Error("Speech window did not follow autonomous desktop movement.");
+  brain.setActivity("idle");
+
+  const dragStartBounds = overlayWindow.getBounds();
+  await overlayWindow.webContents.executeJavaScript(`
+    (() => {
+      window.tinyMint.startDrag(${dragStartBounds.x + 96}, ${dragStartBounds.y + 96});
+      window.tinyMint.drag(${dragStartBounds.x + 108}, ${dragStartBounds.y + 104});
+      window.tinyMint.endDrag(true);
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const draggedCreatureBounds = overlayWindow.getBounds();
+  const draggedDisplay = screen.getDisplayNearestPoint({
+    x: draggedCreatureBounds.x + draggedCreatureBounds.width / 2,
+    y: draggedCreatureBounds.y + draggedCreatureBounds.height / 2
+  });
+  const expectedSpeechPosition = positionSpeechWindowForDisplay(draggedCreatureBounds, draggedDisplay.workArea, speech.getBounds());
+  const actualSpeechPosition = speech.getBounds();
+  const speechFollowsDrag = Math.abs(actualSpeechPosition.x - expectedSpeechPosition.x) <= 1
+    && Math.abs(actualSpeechPosition.y - expectedSpeechPosition.y) <= 1;
+  if (!speechFollowsDrag) throw new Error(`Speech window did not follow the user's drag (actual=${JSON.stringify(actualSpeechPosition)}, expected=${JSON.stringify(expectedSpeechPosition)}, creature=${JSON.stringify(draggedCreatureBounds)}, workArea=${JSON.stringify(draggedDisplay.workArea)}).`);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const renderedOpening = await speech.webContents.executeJavaScript("document.querySelector('#utterance')?.textContent ?? ''") as string;
+  if (!renderedOpening || renderedOpening === "...") throw new Error("Speech renderer did not display Tiny Mint's opening line.");
+  const bridgeMethods = await speech.webContents.executeJavaScript("Object.keys(window.tinyMint).sort().join(',')") as string;
+  const speechNodeAccessDisabled = await speech.webContents.executeJavaScript(
+    "typeof window.require === 'undefined' && typeof process === 'undefined'"
+  ) as boolean;
+  const speechPreloadLockedDown = bridgeMethods === "dismissInteraction,engageInteraction,getInteraction,onInteraction,sendCustomReply,sendQuickReply"
+    && speechNodeAccessDisabled;
+  if (!speechPreloadLockedDown) throw new Error(`Speech preload exposed an unexpected surface: ${bridgeMethods}`);
+
+  await speech.webContents.executeJavaScript("document.querySelector('.quick-replies button')?.click()");
+  const quickReplyDeadline = Date.now() + 3_000;
+  while (!interactionController.getSession()?.messages.some((message) => message.role === "user") && Date.now() < quickReplyDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  let activeSession = interactionController.getSession();
+  if (!activeSession?.messages.some((message) => message.role === "user")) throw new Error("Quick response did not enter the conversation.");
+  const speechQuickResponse = activeSession.messages.some((message) => message.role === "user");
+
+  const customReply = "i'm making your brain";
+  await speech.webContents.executeJavaScript(`
+    (() => {
+      const input = document.querySelector('#reply');
+      input.value = ${JSON.stringify(customReply)};
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()
+  `);
+  const customReplyDeadline = Date.now() + 3_000;
+  while (!interactionController.getSession()?.messages.some((message) => message.role === "user" && message.text === customReply)
+    && Date.now() < customReplyDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  activeSession = interactionController.getSession();
+  if (!activeSession?.messages.some((message) => message.role === "user" && message.text === customReply)) {
+    throw new Error("Custom text did not enter the conversation.");
+  }
+  const speechCustomReply = true;
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const brainActiveDuringConversation = !brain.snapshot().preferences.paused
+    && brain.snapshot().lastUserInteraction >= userInteractionTime
+    && brain.snapshot().energy !== energyAtConversationStart;
+  await speech.webContents.executeJavaScript("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const speechEscapeDismiss = !speech.isVisible() && interactionController.getSession() === null;
+  if (!speechEscapeDismiss) throw new Error("Escape did not dismiss and hide the speech window.");
+  await setCheckbox("interactionsEnabled", true);
+
   await settings.webContents.executeJavaScript(`
     (() => {
       const reducedMotion = document.querySelector('[data-preference="reducedMotion"]');
@@ -434,12 +693,13 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   const room = roomWindow;
   if (!room) throw new Error("Sending Tiny Mint to his room did not open the room window.");
   await new Promise((resolve) => setTimeout(resolve, 400));
-  const roomRender = await room.webContents.executeJavaScript(`
+  let roomRenderTimeout: ReturnType<typeof setTimeout> | undefined;
+  const roomRender = await Promise.race([
+    room.webContents.executeJavaScript(`
     (async () => {
       const canvas = document.querySelector('#mint');
       const creature = document.querySelector('#room-creature');
       const props = Array.from(document.querySelectorAll('#props img'));
-      await Promise.all(props.map((image) => image.decode()));
       if (!canvas || !creature) throw new Error('Room creature elements are missing.');
       let spritePixels = false;
       const deadline = Date.now() + 3000;
@@ -457,7 +717,13 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
       }
       return { creatureVisible: !creature.hidden && spritePixels, loadedProps: props.filter((image) => image.complete && image.naturalWidth > 0).length, totalProps: props.length };
     })()
-  `) as { creatureVisible: boolean; loadedProps: number; totalProps: number };
+  `) as Promise<{ creatureVisible: boolean; loadedProps: number; totalProps: number }>,
+    new Promise<never>((_resolve, reject) => {
+      roomRenderTimeout = setTimeout(() => reject(new Error("Room renderer did not finish its smoke check in time.")), 7_000);
+    })
+  ]).finally(() => {
+    if (roomRenderTimeout) clearTimeout(roomRenderTimeout);
+  });
   if (!room.isVisible() || brain.snapshot().location !== "room") {
     throw new Error(`Sending Tiny Mint to his room did not show the room in the room location (visible=${room.isVisible()}, location=${brain.snapshot().location}).`);
   }
@@ -469,15 +735,35 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   if (brain.snapshot().currentActivity !== "draw" || brain.snapshot().room.target !== "desk") {
     throw new Error("Manual room prop interaction failed with room autonomy disabled.");
   }
-  const roomImage = await room.capturePage();
-  if (roomImage.isEmpty()) throw new Error("Room window did not produce a rendered frame.");
-  writeFileSync(join(outputDirectory, "room.png"), roomImage.toPNG());
   const overlayHiddenInRoom = !overlayWindow.isVisible();
   if (!overlayHiddenInRoom) throw new Error("Desktop overlay remained visible while Tiny Mint was in the room.");
   room.close();
   brain.setActivity("rest");
   const stateContinuesWithRoomClosed = brain.snapshot().location === "room" && brain.snapshot().currentActivity === "rest";
   if (!stateContinuesWithRoomClosed) throw new Error("Creature state did not persist after the room window closed.");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  openRoom();
+  const roomForTalk = roomWindow;
+  if (!roomForTalk) throw new Error("The room did not reopen for the room-origin Talk check.");
+  await roomForTalk.webContents.executeJavaScript("window.tinyMint.talk()");
+  const roomTalkDeadline = Date.now() + 5_000;
+  while ((!interactionController.getSession() || interactionController.getSession()?.waitingForResponse) && Date.now() < roomTalkDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const roomTalkSession = interactionController.getSession();
+  const talkFromRoomReturnsToDesktop = brain.snapshot().location === "desktop"
+    && roomForTalk.isVisible() === false
+    && speechWindow?.isVisible() === true
+    && roomTalkSession?.origin === "user"
+    && roomTalkSession.waitingForResponse === false;
+  if (!talkFromRoomReturnsToDesktop) throw new Error("Talk from the room did not bring Tiny Mint to the desktop.");
+  interactionController.dismiss();
+  sendToRoom();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const roomHandoffAfterConversation = roomWindow?.isVisible() === true && brain.snapshot().location === "room";
+  if (!roomHandoffAfterConversation) throw new Error("Room handoff failed after the room-origin Talk session.");
+  roomWindow?.close();
+  await new Promise((resolve) => setTimeout(resolve, 100));
   brain.setLocation("desktop");
   await setCheckbox("paused", false);
   await new Promise((resolve) => setTimeout(resolve, 150));
@@ -498,10 +784,22 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     roomCreaturePixels: roomRender.creatureVisible,
     loadedRoomProps: roomRender.loadedProps,
     settingsControlCount,
+    manualTalkWhileInitiationDisabled: true,
+    speechWindowOnScreen,
+    speechDoesNotStealFocus,
+    speechPreloadLockedDown,
+    speechFollowsWander,
+    speechFollowsDrag,
+    speechQuickResponse,
+    speechCustomReply,
+    brainActiveDuringConversation,
+    speechEscapeDismiss,
     reducedMotionIndependentOfPause: !brain.snapshot().preferences.paused,
     startupSettingRoundTrip,
     overlayHiddenInRoom,
     stateContinuesWithRoomClosed,
+    talkFromRoomReturnsToDesktop,
+    roomHandoffAfterConversation,
     overlayVisibleOnDesktop,
     persistedSchemaVersion: persisted.schemaVersion,
     persistedPosition: persisted.position,
@@ -509,6 +807,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   };
   writeFileSync(join(outputDirectory, "report.json"), JSON.stringify(report, null, 2));
   console.log(`TINY_MINT_SMOKE ${JSON.stringify(report)}`);
+  clearTimeout(watchdog);
   app.quit();
 }
 
@@ -516,11 +815,23 @@ app.whenReady().then(() => {
   store = new StateStore(join(app.getPath("userData"), "creature-state.json"));
   const initialState = store.load();
   brain = new CreatureBrain(initialState);
+  interactionController = new InteractionController({
+    getState: () => brain.snapshot(),
+    brain,
+    provider: createDialogueProvider(),
+    onSession: showSpeechSession,
+    reportFailure: (error) => console.warn("Dialogue provider failed; using Tiny Mint's local voice.", error),
+    random: Math.random
+  });
   registerIpc();
   createOverlay(initialState);
   createTray();
+  interactionController.start();
   brain.subscribe(broadcast);
   brain.start();
+  screen.on("display-metrics-changed", positionSpeechWindow);
+  screen.on("display-added", positionSpeechWindow);
+  screen.on("display-removed", positionSpeechWindow);
   globalShortcut.register("CommandOrControl+Shift+M", openRoom);
   if (!process.env.TINY_MINT_SMOKE_OUTPUT && !process.env.TINY_MINT_SMOKE_USER_DATA) {
     applyStartupPreference(brain.snapshot().preferences.startWithWindows);
@@ -536,8 +847,14 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {});
 app.on("before-quit", () => {
   brain?.stop();
+  interactionController?.dispose();
   if (saveTimer) clearTimeout(saveTimer);
   if (movementTimer) clearInterval(movementTimer);
   if (brain && store) store.save(brain.snapshot());
 });
-app.on("will-quit", () => globalShortcut.unregisterAll());
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
+  screen.removeListener("display-metrics-changed", positionSpeechWindow);
+  screen.removeListener("display-added", positionSpeechWindow);
+  screen.removeListener("display-removed", positionSpeechWindow);
+});

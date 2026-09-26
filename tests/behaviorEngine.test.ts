@@ -50,4 +50,9 @@ describe("chooseActivity", () => {
     };
     expect(chooseActivity(state, () => 0.99)).toBe("wander");
   });
+
+  it("avoids starting an automatic room transition during an active conversation", () => {
+    const state = defaultState();
+    expect(chooseActivity(state, () => 0.999, true)).not.toBe("visitRoom");
+  });
 });

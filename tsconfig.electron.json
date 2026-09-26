@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/electron/**/*.ts", "src/creature/**/*.ts", "src/events/**/*.ts", "src/persistence/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["src/electron/**/*.ts", "src/creature/**/*.ts", "src/events/**/*.ts", "src/interaction/**/*.ts", "src/persistence/**/*.ts", "src/shared/**/*.ts"]
 }

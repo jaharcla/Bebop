@@ -86,4 +86,14 @@ describe("CreatureBrain", () => {
     expect(brain.snapshot().currentActivity).toBe("draw");
     expect(brain.snapshot().room.target).toBe("desk");
   });
+
+  it("discourages automatic room transitions during conversation without stopping the creature", () => {
+    const brain = new CreatureBrain(defaultState(), () => 0.999);
+    brain.setConversationActive(true);
+    brain.setActivity("visitRoom");
+    expect(brain.snapshot().location).toBe("desktop");
+
+    brain.setActivity("wander");
+    expect(brain.snapshot().currentActivity).toBe("wander");
+  });
 });

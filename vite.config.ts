@@ -8,7 +8,8 @@ export default defineConfig({
       input: {
         overlay: resolve(__dirname, "index.html"),
         room: resolve(__dirname, "room.html"),
-        settings: resolve(__dirname, "settings.html")
+        settings: resolve(__dirname, "settings.html"),
+        speech: resolve(__dirname, "speech.html")
       }
     }
   }

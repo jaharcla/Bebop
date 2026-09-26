@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tiny Mint</title>
+  </head>
+  <body>
+    <main id="bubble" aria-label="Tiny Mint says" hidden>
+      <button id="close" type="button" aria-label="Close conversation">×</button>
+      <p id="you" class="you" hidden></p>
+      <p id="utterance" class="utterance" role="status" aria-live="polite">...</p>
+      <div id="quick-replies" class="quick-replies"></div>
+      <form id="reply-form">
+        <textarea id="reply" maxlength="500" rows="1" placeholder="say something..." aria-label="Reply to Tiny Mint"></textarea>
+        <button id="send" type="submit" aria-label="Send reply">↗</button>
+      </form>
+    </main>
+    <script type="module" src="/src/ui/speech.ts"></script>
+  </body>
+</html>

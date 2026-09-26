@@ -1,4 +1,11 @@
-import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../shared/types";
+import type {
+  Activity,
+  CreaturePreferences,
+  CreatureState,
+  InteractionSession,
+  Location,
+  RoomPropId
+} from "../shared/types";
 
 declare global {
   interface Window {
@@ -18,6 +25,13 @@ declare global {
       setActivity(activity: Activity): void;
       useRoomProp(prop: RoomPropId): void;
       updatePreferences(preferences: Partial<CreaturePreferences>): void;
+      talk(): void;
+      getInteraction(): Promise<InteractionSession | null>;
+      onInteraction(listener: (session: InteractionSession | null) => void): () => void;
+      sendQuickReply(text: string): void;
+      sendCustomReply(text: string): void;
+      dismissInteraction(): void;
+      engageInteraction(): void;
       reset(): void;
     };
   }

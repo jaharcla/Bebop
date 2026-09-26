@@ -10,6 +10,7 @@ export class CreatureBrain {
   private listener: StateListener | undefined;
   private timer: NodeJS.Timeout | undefined;
   private nextDecisionAt = Date.now() + 14_000;
+  private conversationActive = false;
 
   constructor(initial: CreatureState = defaultState(), private readonly random: RandomSource = Math.random) {
     this.state = clampState(initial);
@@ -45,6 +46,22 @@ export class CreatureBrain {
     this.publish();
   }
 
+  setConversationActive(active: boolean): void {
+    this.conversationActive = active;
+  }
+
+  recordConversationReply(): void {
+    this.state.lastUserInteraction = Date.now();
+    this.state.socialInterest = Math.min(100, this.state.socialInterest + 2);
+    this.state.comfort = Math.min(100, this.state.comfort + 1);
+    this.publish();
+  }
+
+  recordCreatureConversation(): void {
+    this.state.lastCreatureInteraction = Date.now();
+    this.publish();
+  }
+
   setPosition(x: number, y: number, options: { notify?: boolean; userInteraction?: boolean } = {}): void {
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Creature position must be finite.");
     this.state.position = { x: Math.round(x), y: Math.round(y) };
@@ -70,6 +87,7 @@ export class CreatureBrain {
 
   setActivity(activity: Activity): void {
     const now = Date.now();
+    if (this.conversationActive && (activity === "visitRoom" || activity === "visitDesktop")) return;
     if (activity === "visitRoom") {
       this.setLocation("room");
       return;
@@ -141,7 +159,7 @@ export class CreatureBrain {
     this.state = clampState(this.state);
     this.state.mood = this.state.energy < 25 ? "sleepy" : this.state.boredom > 72 ? "bored" : this.state.curiosity > 72 ? "curious" : "chill";
     if (Date.now() >= this.nextDecisionAt && !this.state.preferences.paused) {
-      this.setActivity(chooseActivity(this.state, this.random));
+      this.setActivity(chooseActivity(this.state, this.random, this.conversationActive));
       return;
     }
     this.publish();

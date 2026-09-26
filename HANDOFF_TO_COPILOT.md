@@ -46,9 +46,19 @@ The v3 art pack has been promoted into the real Electron/TypeScript app.
 - Do not replace finished room prop sprites with CSS placeholder furniture.
 - Keep the deterministic creature functional without Groq/Notion.
 
+## Interaction milestone
+
+- The separate speech window and typed `InteractionController` now own sessions and initiation timing; the Creature Brain remains deterministic and owns creature life/state.
+- Right-click Tiny Mint or use the tray menu's Talk command for a short conversation. The dedicated compact bubble offers up to three quick replies or a 500-character custom response; Escape and the close button dismiss it.
+- Creature-initiated check-ins use mood/location transitions and a delayed long-quiet trigger, with startup grace, an 8–15 minute baseline cooldown, and longer cooldowns after ignored bubbles. The existing `interactionsEnabled` preference controls only creature-initiated speech.
+- Local dialogue works without configuration. Optional Groq runs only in Electron's main process when both `GROQ_API_KEY` and `GROQ_MODEL` are present in the environment. Requests are bounded, structured, timed out, validated, and fall back to local responses.
+- The last six conversation messages live in memory only. No screen awareness, keystroke, microphone, webcam, clipboard, or browser monitoring was added.
+- Speech placement is a pure tested calculation and follows overlay movement; active conversation discourages autonomous room transitions without pausing simulation.
+- The supplied bong pack is preserved only under `assets/sprites/v3-source/bonus/bong/`. It is not part of the production atlas or activity system.
+
 ## Recommended next task
 
-Run the app on Windows and visually QA every v3 state/prop interaction. Fix only integration/layout issues first. Once the art pass is confirmed, continue with the planned speech-bubble / quick-response interaction layer or computer-awareness layer rather than reworking the sprite system again.
+Package Tiny Mint for Windows and perform visual/manual QA of speech-window placement, non-stealing focus, and startup behavior. Do not expand the autonomy/AI scope or change the canonical 16-row v3 atlas during that QA.
 
 ## Toggleability and stability pass
 

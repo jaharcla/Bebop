@@ -7,7 +7,7 @@ interface WeightedActivity {
   weight: number;
 }
 
-export function chooseActivity(state: CreatureState, random: RandomSource = Math.random): Activity {
+export function chooseActivity(state: CreatureState, random: RandomSource = Math.random, conversationActive = false): Activity {
   if (state.preferences.paused) return state.currentActivity;
 
   const choices: WeightedActivity[] = state.location === "desktop"
@@ -16,7 +16,7 @@ export function chooseActivity(state: CreatureState, random: RandomSource = Math
         ...(state.preferences.roamingEnabled ? [{ activity: "wander" as const, weight: 20 + state.boredom * 0.25 }] : []),
         { activity: "observe", weight: 12 + state.curiosity * 0.18 },
         { activity: "rest", weight: Math.max(3, 32 - state.energy * 0.3) },
-        ...(state.preferences.roomVisitsEnabled ? [{ activity: "visitRoom" as const, weight: state.energy < 35 ? 22 : 5 }] : [])
+        ...(state.preferences.roomVisitsEnabled && !conversationActive ? [{ activity: "visitRoom" as const, weight: state.energy < 35 ? 22 : 5 }] : [])
       ]
     : [
         { activity: "idle", weight: 18 },

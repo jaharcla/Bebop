@@ -32,10 +32,21 @@ npm run typecheck
 - Use Settings to toggle roaming, room visits and autonomy, cursor play, reduced motion, startup at login, and other preferences.
 - In the room, click any prop to have Tiny Mint use it.
 - The room's debug panel is visible only in development mode.
+- Right-click Tiny Mint or the tray icon and choose **Talk** for an optional short conversation. Quick replies or a short typed reply are supported; Escape or the close button dismisses it.
 
 Master pause stops autonomous simulation decisions while keeping windows and manual controls responsive. Reduced motion is visual-only: the app preference or the operating-system preference freezes sprite animation, but does not set or pause the creature's simulation.
 
 Packaged Windows builds manage sign-in startup through Electron's login-item settings. Development builds retain the preference for the packaged app and log that OS startup registration is not applied; this does not prevent the app from running.
+
+## Conversation
+
+Tiny Mint's small speech bubble is separate from the desktop sprite window. User-requested Talk works while the creature is paused and while creature-initiated interactions are disabled. Autonomous check-ins are desktop-only, conservative, cooldown-limited, and become less frequent after ignored bubbles. Conversation does not pause his life, but automatic room transitions are discouraged until an active exchange ends.
+
+Conversation works offline with a small deterministic local vocabulary. Optional Groq replies are enabled only when both `GROQ_API_KEY` and `GROQ_MODEL` are present in the environment that launches the app. Copy `.env.example` as a reference for those variable names; the app does not require or automatically load a `.env` file. For example, set them in PowerShell before `npm run dev`. The key stays in Electron's main process; requests time out and invalid or failed responses fall back to local dialogue.
+
+Only a compact mood/activity/personality summary and the last few conversation turns are sent to Groq. Transcripts are ephemeral and are not written to the state store. Tiny Mint does not capture the screen, keystrokes, microphone, webcam, clipboard, or browser activity.
+
+See `docs/INTERACTIONS.md` for the interaction lifecycle, local fallback, and configuration details.
 
 ## V3 art integration
 
@@ -51,6 +62,8 @@ The main atlas is now the v3 `384×1536` mascot atlas: 16 rows of four 96×96 fr
 All 16 finished room props live in `assets/sprites/props/` and are used by the actual Electron room: bed, desk, chair, bookshelf, rug, plant, toy box, ball, dumbbell, music player, sketchbook, book, door, cushion, corkboard, and watering can.
 
 See `docs/V3_ASSET_INTEGRATION.md` for the exact mappings. Individual v3 frame PNGs, strips, GIF previews, and source atlases are preserved under `assets/sprites/v3-source/` for future sprite work.
+
+The optional user-supplied bong art pack is stored separately under `assets/sprites/v3-source/bonus/bong/`. It is source art only: it does not alter the production atlas, animation types, or autonomous behavior, and needs visual QA before any production use.
 
 ## Offline-first boundary
 

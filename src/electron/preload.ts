@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../shared/types";
+import type {
+  Activity,
+  CreaturePreferences,
+  CreatureState,
+  InteractionSession,
+  Location,
+  RoomPropId
+} from "../shared/types";
 
 contextBridge.exposeInMainWorld("tinyMint", {
   isDevelopment: Boolean(process.env.VITE_DEV_SERVER_URL),
@@ -21,5 +28,16 @@ contextBridge.exposeInMainWorld("tinyMint", {
   setActivity: (activity: Activity) => ipcRenderer.send("state:activity", activity),
   useRoomProp: (prop: RoomPropId) => ipcRenderer.send("room:use-prop", prop),
   updatePreferences: (preferences: Partial<CreaturePreferences>) => ipcRenderer.send("preferences:update", preferences),
+  talk: () => ipcRenderer.send("interaction:start"),
+  getInteraction: (): Promise<InteractionSession | null> => ipcRenderer.invoke("interaction:get"),
+  onInteraction: (listener: (session: InteractionSession | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, session: InteractionSession | null) => listener(session);
+    ipcRenderer.on("interaction:changed", handler);
+    return () => ipcRenderer.off("interaction:changed", handler);
+  },
+  sendQuickReply: (text: string) => ipcRenderer.send("interaction:reply", text),
+  sendCustomReply: (text: string) => ipcRenderer.send("interaction:custom-reply", text),
+  dismissInteraction: () => ipcRenderer.send("interaction:dismiss"),
+  engageInteraction: () => ipcRenderer.send("interaction:engage"),
   reset: () => ipcRenderer.send("state:reset")
 });

@@ -101,6 +101,51 @@ export interface CreatureState {
   personality: Personality;
 }
 
+export type ConversationRole = "user" | "creature";
+
+export interface ConversationMessage {
+  role: ConversationRole;
+  text: string;
+  at: number;
+}
+
+export interface CreatureUtterance {
+  text: string;
+  quickResponses: string[];
+  emotion?: Mood;
+}
+
+export interface InteractionSession {
+  id: string;
+  origin: "creature" | "user";
+  createdAt: number;
+  expiresAt: number | null;
+  messages: ConversationMessage[];
+  current: CreatureUtterance;
+  waitingForResponse: boolean;
+}
+
+export type InteractionTrigger =
+  | "BECAME_CURIOUS"
+  | "BECAME_BORED"
+  | "RETURNED_TO_DESKTOP"
+  | "LONG_QUIET_PERIOD"
+  | "USER_REQUESTED_TALK";
+
+export interface DialogueContext {
+  mood: Mood;
+  energy: number;
+  currentActivity: Activity;
+  location: Location;
+  personality: Pick<Personality, "curiosity" | "creativity" | "independence" | "sociability">;
+}
+
+export interface DialogueRequest {
+  trigger: InteractionTrigger;
+  context: DialogueContext;
+  messages: ConversationMessage[];
+}
+
 export type CreatureEvent =
   | { type: "APP_STARTED" }
   | { type: "USER_CLICKED_CREATURE" }

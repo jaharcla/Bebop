@@ -1,0 +1,23 @@
+{
+  "name": "bong",
+  "cellSize": 96,
+  "frames": 4,
+  "sequence": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "suggestedDurationsMs": [
+    650,
+    500,
+    900,
+    900
+  ],
+  "suggestedMode": "loop",
+  "notes": [
+    "Derived from the 1254x1254 concept sheet.",
+    "Nearest-neighbor resized into existing Tiny Mint 96x96 cell convention.",
+    "Visual QA recommended before adding to the production atlas because the source concept art was not drawn on the canonical 96x96 grid."
+  ]
+}
