@@ -109,7 +109,7 @@ export class InteractionController {
   }
 
   async reply(text: string): Promise<void> {
-    if (!this.session || this.session.waitingForResponse || typeof text !== "string") return;
+    if (!this.session || this.session.waitingForResponse || this.session.current.endConversation || typeof text !== "string") return;
     const bounded = text.trim();
     if (!bounded || bounded.length > MAX_CUSTOM_REPLY_LENGTH || this.session.messages.length >= MAX_CONVERSATION_MESSAGES) return;
     this.engage();
