@@ -16,6 +16,12 @@ npm run build
 npm start
 ```
 
+Create Windows installer and portable release artifacts:
+
+```powershell
+npm run dist
+```
+
 Tests and type checks:
 
 ```powershell
@@ -55,7 +61,7 @@ GROQ_API_KEY=<paste key>
 GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-Development automatically loads this ignored file in Electron's main process. An environment-provided `GROQ_MODEL` overrides the default. The app starts normally and stays local if no key is configured. `.env` is not bundled with packaged builds; secret storage for packaged credentials is intentionally out of scope. The key never enters renderer code. Groq requests use strict structured output, time out, can be cancelled when a conversation closes, and fall back to local dialogue on service failures. Settings shows whether the active development voice is **Local voice** or **Groq ready** without revealing the key.
+Development automatically loads this ignored file in Electron's main process and prefers it over a securely saved key. An environment-provided `GROQ_MODEL` overrides the default. The app starts normally and stays local if no key is configured. `.env` is not bundled with packaged builds. Packaged users can save a key in Settings; Electron encrypts it with Windows secure storage under the app's user-data directory, and the saved value is never returned to the renderer. If secure storage is unavailable, Tiny Mint stays on Local voice rather than storing plaintext. Groq requests use strict structured output, time out, can be cancelled when a conversation closes, and fall back to local dialogue on service failures.
 
 Only a compact mood/activity/personality summary and the last few conversation turns are sent to Groq. Transcripts are ephemeral and are not written to the state store. Tiny Mint does not capture the screen, keystrokes, microphone, webcam, clipboard, or browser activity.
 

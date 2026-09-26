@@ -2,7 +2,8 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
-  DialogueProviderStatus,
+  DialogueActionResult,
+  DialogueSettingsStatus,
   InteractionSession,
   Location,
   RoomPropId
@@ -13,7 +14,11 @@ declare global {
     tinyMint: {
       isDevelopment: boolean;
       getState(): Promise<CreatureState>;
-      getDialogueStatus(): Promise<DialogueProviderStatus | null>;
+      getDialogueStatus(): Promise<DialogueSettingsStatus | null>;
+      saveGroqKey(value: string): Promise<DialogueActionResult>;
+      clearGroqKey(): Promise<DialogueActionResult>;
+      testGroqConnection(): Promise<DialogueActionResult>;
+      onDialogueStatus(listener: (status: DialogueSettingsStatus) => void): () => void;
       onState(listener: (state: CreatureState) => void): () => void;
       click(): void;
       startDrag(screenX: number, screenY: number): void;

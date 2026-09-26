@@ -23,3 +23,12 @@ h2 { margin: 0 0 6px; color: #557361; font-size: 12px; letter-spacing: 1.1px; te
 .status { min-height: 15px; margin: 8px 0 0; color: #617669; font-size: 11px; }
 .status[data-error="true"] { color: #9a3e35; }
 .dialogue-status { margin: 0; color: #617669; font-size: 12px; }
+.key-field { display: grid; gap: 5px; margin-top: 10px; color: #557361; font-size: 11px; font-weight: 600; }
+.key-field input { width: 100%; height: 34px; border: 1px solid #bdcdbd; border-radius: 8px; padding: 0 10px; color: #294b43; background: #f8fbf6; font: inherit; font-weight: 400; }
+.key-field input:focus-visible { outline: 3px solid #608f91; outline-offset: 1px; }
+.key-state { min-height: 15px; margin: 5px 0 0; color: #687b6f; font-size: 11px; }
+.dialogue-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.dialogue-actions button { min-height: 32px; border: 1px solid #5f846c; border-radius: 8px; padding: 0 12px; color: #fff; background: #628d72; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.dialogue-actions button.secondary { color: #3f6554; background: #f8fbf6; }
+.dialogue-actions button:disabled { cursor: default; opacity: .5; }
+.dialogue-actions button:focus-visible { outline: 3px solid #608f91; outline-offset: 2px; }

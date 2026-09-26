@@ -4,6 +4,7 @@ dist-electron/
 artifacts/smoke/
 .vite/
 coverage/
+release/
 *.log
 .env
 .env.*

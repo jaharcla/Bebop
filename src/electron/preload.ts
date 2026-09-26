@@ -3,7 +3,8 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
-  DialogueProviderStatus,
+  DialogueActionResult,
+  DialogueSettingsStatus,
   InteractionSession,
   Location,
   RoomPropId
@@ -12,7 +13,15 @@ import type {
 contextBridge.exposeInMainWorld("tinyMint", {
   isDevelopment: Boolean(process.env.VITE_DEV_SERVER_URL),
   getState: (): Promise<CreatureState> => ipcRenderer.invoke("state:get"),
-  getDialogueStatus: (): Promise<DialogueProviderStatus | null> => ipcRenderer.invoke("dialogue:status"),
+  getDialogueStatus: (): Promise<DialogueSettingsStatus | null> => ipcRenderer.invoke("dialogue:status"),
+  saveGroqKey: (value: string): Promise<DialogueActionResult> => ipcRenderer.invoke("dialogue:save-key", value),
+  clearGroqKey: (): Promise<DialogueActionResult> => ipcRenderer.invoke("dialogue:clear-key"),
+  testGroqConnection: (): Promise<DialogueActionResult> => ipcRenderer.invoke("dialogue:test"),
+  onDialogueStatus: (listener: (status: DialogueSettingsStatus) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: DialogueSettingsStatus) => listener(status);
+    ipcRenderer.on("dialogue:status-changed", handler);
+    return () => ipcRenderer.off("dialogue:status-changed", handler);
+  },
   onState: (listener: (state: CreatureState) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, state: CreatureState) => listener(state);
     ipcRenderer.on("state:changed", handler);

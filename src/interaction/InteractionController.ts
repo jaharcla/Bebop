@@ -94,6 +94,11 @@ export class InteractionController {
     return this.session ? structuredClone(this.session) : null;
   }
 
+  setProvider(provider: DialogueProvider): void {
+    this.activeReplyController?.abort();
+    this.options.provider = provider;
+  }
+
   async startUserSession(): Promise<void> {
     if (this.disposed) return;
     this.cancelInitiation();

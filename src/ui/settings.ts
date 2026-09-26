@@ -1,16 +1,68 @@
 import "./settings.css";
-import type { CreaturePreferences, CreatureState } from "../shared/types";
+import type { CreaturePreferences, CreatureState, DialogueActionResult, DialogueSettingsStatus } from "../shared/types";
 
 const inputs = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-preference]"));
-const status = document.querySelector<HTMLParagraphElement>("#status");
-const dialogueStatus = document.querySelector<HTMLParagraphElement>("#dialogue-status");
-if (!status) throw new Error("Settings status element is missing.");
-if (!dialogueStatus) throw new Error("Dialogue status element is missing.");
+function required<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) throw new Error(`Settings control is missing: ${selector}`);
+  return element;
+}
+const status = required<HTMLParagraphElement>("#status");
+const dialogueStatus = required<HTMLParagraphElement>("#dialogue-status");
+const keyInput = required<HTMLInputElement>("#groq-key");
+const keyState = required<HTMLParagraphElement>("#key-state");
+const dialogueMessage = required<HTMLParagraphElement>("#dialogue-message");
+const saveKey = required<HTMLButtonElement>("#save-key");
+const clearKey = required<HTMLButtonElement>("#clear-key");
+const testConnection = required<HTMLButtonElement>("#test-connection");
 
-void window.tinyMint.getDialogueStatus().then((provider) => {
-  dialogueStatus.textContent = provider ?? "Unavailable";
+function renderDialogue(value: DialogueSettingsStatus): void {
+  dialogueStatus.textContent = value.provider;
+  keyState.textContent = value.developmentKeyActive
+    ? "Development key active"
+    : value.keySaved ? "Key saved" : "No saved key — Local voice is available";
+  keyInput.disabled = !value.secureStorageAvailable;
+  saveKey.disabled = !value.secureStorageAvailable;
+  clearKey.disabled = !value.keySaved;
+  testConnection.disabled = value.provider === "Local voice" || value.provider === "Secure storage unavailable — using Local voice";
+}
+
+function showDialogueResult(result: DialogueActionResult): void {
+  renderDialogue(result);
+  dialogueMessage.dataset.error = String(!result.ok);
+  dialogueMessage.textContent = result.message;
+}
+
+void window.tinyMint.getDialogueStatus().then((value) => {
+  if (value) renderDialogue(value);
+  else dialogueStatus.textContent = "Unavailable";
 }).catch((error: unknown) => {
-  dialogueStatus.textContent = `Unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  dialogueStatus.textContent = "Unavailable";
+  dialogueMessage.dataset.error = "true";
+  dialogueMessage.textContent = error instanceof Error ? error.message : String(error);
+});
+
+window.tinyMint.onDialogueStatus(renderDialogue);
+
+saveKey.addEventListener("click", async () => {
+  const result = await window.tinyMint.saveGroqKey(keyInput.value);
+  keyInput.value = "";
+  showDialogueResult(result);
+});
+
+clearKey.addEventListener("click", async () => {
+  showDialogueResult(await window.tinyMint.clearGroqKey());
+});
+
+testConnection.addEventListener("click", async () => {
+  testConnection.disabled = true;
+  dialogueMessage.dataset.error = "false";
+  dialogueMessage.textContent = "Testing…";
+  try {
+    showDialogueResult(await window.tinyMint.testGroqConnection());
+  } finally {
+    testConnection.disabled = false;
+  }
 });
 
 function preferenceKey(input: HTMLInputElement): keyof CreaturePreferences {

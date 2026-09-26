@@ -20,6 +20,6 @@ export function createDialogueProvider(
   );
   return {
     provider: new FallbackDialogueProvider(groq, local, options.reportFailure),
-    status: "Groq ready"
+    status: "Groq configured"
   };
 }

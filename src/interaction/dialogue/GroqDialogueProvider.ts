@@ -12,12 +12,10 @@ const responseSchema = {
   additionalProperties: false,
   required: ["text", "quickResponses", "emotion", "endConversation"],
   properties: {
-    text: { type: "string", minLength: 1, maxLength: 160 },
+    text: { type: "string" },
     quickResponses: {
       type: "array",
-      minItems: 0,
-      maxItems: 3,
-      items: { type: "string", minLength: 1, maxLength: 40 }
+      items: { type: "string" }
     },
     emotion: {
       type: "string",
@@ -70,7 +68,7 @@ export class GroqDialogueProvider implements DialogueProvider {
           reasoning_effort: "low",
           include_reasoning: false,
           temperature: 0.8,
-          max_completion_tokens: 256,
+          max_completion_tokens: 512,
           stream: false
         }),
         signal: controller.signal

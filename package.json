@@ -8,8 +8,12 @@
     "dev": "npm run build:main && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build:main": "tsc -p tsconfig.electron.json",
     "build": "npm run build:main && vite build",
+    "icons": "node scripts/generate-icons.mjs",
+    "pack": "npm run build && npm run icons && electron-builder --dir",
+    "dist": "npm run build && npm run icons && electron-builder --win nsis portable",
     "start": "electron .",
     "smoke": "node scripts/smoke.mjs",
+    "smoke:groq": "npm run build:main && node scripts/groq-smoke.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
   },
@@ -18,9 +22,45 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.4",
     "typescript": "^5.9.0",
     "vite": "^7.1.0",
     "vitest": "^5.0.2",
     "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.tinymint.desktop",
+    "productName": "Tiny Mint",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "assets/sprites/mascot-atlas.png",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "${productName} ${version}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName} Setup ${version}.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createStartMenuShortcut": true,
+      "createDesktopShortcut": false,
+      "shortcutName": "Tiny Mint",
+      "uninstallDisplayName": "Tiny Mint"
+    }
   }
 }

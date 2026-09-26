@@ -1,7 +1,7 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, Tray } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, Tray } from "electron";
 import type { MenuItem } from "electron";
 import { join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { CreatureBrain } from "../creature/brain/CreatureBrain";
 import { loadDevelopmentEnvironment } from "./developmentEnvironment";
 import { InteractionController } from "../interaction/InteractionController";
@@ -10,11 +10,14 @@ import type { DialogueProvider } from "../interaction/dialogue/DialogueProvider"
 import { LocalDialogueProvider } from "../interaction/dialogue/LocalDialogueProvider";
 import { positionSpeechWindow as calculateSpeechPosition } from "../interaction/speechPosition";
 import { StateStore } from "../persistence/StateStore";
+import { SecretStore } from "./SecretStore";
 import type {
   Activity,
   CreaturePreferences,
   CreatureState,
+  DialogueActionResult,
   DialogueProviderStatus,
+  DialogueSettingsStatus,
   InteractionSession,
   Location,
   RoomPropId
@@ -34,6 +37,7 @@ let brain: CreatureBrain;
 let store: StateStore;
 let interactionController: InteractionController;
 let dialogueProviderStatus: DialogueProviderStatus = "Local voice";
+let secretStore: SecretStore;
 let speechWindowSize = { ...SPEECH_WINDOW_MIN_SIZE };
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
@@ -45,6 +49,16 @@ const devUrl = process.env.VITE_DEV_SERVER_URL;
 loadDevelopmentEnvironment(devUrl);
 const smokeUserData = process.env.TINY_MINT_SMOKE_USER_DATA;
 if (smokeUserData) app.setPath("userData", smokeUserData);
+app.setName("Tiny Mint");
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+else {
+  app.on("second-instance", () => {
+    if (!brain) return;
+    brain.setLocation("desktop");
+    overlayWindow?.showInactive();
+  });
+}
 
 function rendererPath(page: "index.html" | "room.html" | "settings.html" | "speech.html"): string {
   return devUrl ? `${devUrl}/${page}` : join(app.getAppPath(), "dist", page);
@@ -172,19 +186,90 @@ function startUserTalk(): void {
   });
 }
 
+function developmentApiKey(): string | undefined {
+  return app.isPackaged ? undefined : process.env.GROQ_API_KEY?.trim() || undefined;
+}
+
+function configuredApiKey(): string | undefined {
+  return developmentApiKey() ?? secretStore?.readKey();
+}
+
+function dialogueSettingsStatus(): DialogueSettingsStatus {
+  return {
+    provider: dialogueProviderStatus,
+    keySaved: secretStore?.hasKey() ?? false,
+    secureStorageAvailable: secretStore?.isAvailable() ?? false,
+    developmentKeyActive: Boolean(developmentApiKey())
+  };
+}
+
+function broadcastDialogueStatus(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send("dialogue:status-changed", dialogueSettingsStatus());
+  }
+}
+
 function createDialogueProvider(): DialogueProvider {
   if (process.env.TINY_MINT_SMOKE_OUTPUT) {
     dialogueProviderStatus = "Local voice";
     return new LocalDialogueProvider();
   }
-  const configured = selectDialogueProvider(process.env.GROQ_API_KEY, process.env.GROQ_MODEL, {
+  const key = configuredApiKey();
+  if (!key && app.isPackaged && !secretStore.isAvailable()) {
+    dialogueProviderStatus = "Secure storage unavailable — using Local voice";
+    return new LocalDialogueProvider();
+  }
+  const configured = selectDialogueProvider(key, process.env.GROQ_MODEL, {
     reportFailure: (error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.warn(`Groq dialogue unavailable; using local replies (${detail}).`);
+      dialogueProviderStatus = "Groq unavailable — using Local voice";
+      broadcastDialogueStatus();
     }
   });
   dialogueProviderStatus = configured.status;
   return configured.provider;
+}
+
+function refreshDialogueProvider(): void {
+  interactionController.setProvider(createDialogueProvider());
+  broadcastDialogueStatus();
+}
+
+async function testGroqConnection(): Promise<DialogueActionResult> {
+  const key = configuredApiKey();
+  if (!key) return { ...dialogueSettingsStatus(), ok: false, message: "Add a Groq API key first." };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: controller.signal
+    });
+    if (response.ok) {
+      interactionController.setProvider(createDialogueProvider());
+      dialogueProviderStatus = "Groq connected";
+      broadcastDialogueStatus();
+      return { ...dialogueSettingsStatus(), ok: true, message: "Groq connected" };
+    }
+    interactionController.setProvider(new LocalDialogueProvider());
+    dialogueProviderStatus = "Groq unavailable — using Local voice";
+    broadcastDialogueStatus();
+    return {
+      ...dialogueSettingsStatus(),
+      ok: false,
+      message: response.status === 401 || response.status === 403
+        ? "Couldn't authenticate"
+        : "Groq unavailable — Local voice will still work"
+    };
+  } catch {
+    interactionController.setProvider(new LocalDialogueProvider());
+    dialogueProviderStatus = "Groq unavailable — using Local voice";
+    broadcastDialogueStatus();
+    return { ...dialogueSettingsStatus(), ok: false, message: "Groq unavailable — Local voice will still work" };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function openRoom(): void {
@@ -217,9 +302,9 @@ function openSettings(): void {
   }
   settingsWindow = new BrowserWindow({
     width: 460,
-    height: 690,
+    height: 790,
     minWidth: 400,
-    minHeight: 600,
+    minHeight: 700,
     resizable: false,
     title: "Tiny Mint Settings",
     backgroundColor: "#edf2e9",
@@ -379,7 +464,42 @@ function applyStartupPreference(enabled: boolean): void {
 function registerIpc(): void {
   ipcMain.handle("state:get", () => brain.snapshot());
   ipcMain.handle("interaction:get", (event) => isSpeechWindow(event.sender) ? interactionController.getSession() : null);
-  ipcMain.handle("dialogue:status", (event) => isApplicationWindow(event.sender) ? dialogueProviderStatus : null);
+  ipcMain.handle("dialogue:status", (event) => isApplicationWindow(event.sender) ? dialogueSettingsStatus() : null);
+  ipcMain.handle("dialogue:save-key", (event, value: unknown): DialogueActionResult => {
+    if (settingsWindow?.webContents !== event.sender || typeof value !== "string" || value.length > 512) {
+      return { ...dialogueSettingsStatus(), ok: false, message: "Could not save that key." };
+    }
+    try {
+      secretStore.saveKey(value);
+      refreshDialogueProvider();
+      return { ...dialogueSettingsStatus(), ok: true, message: "Key saved securely" };
+    } catch (error) {
+      return {
+        ...dialogueSettingsStatus(),
+        ok: false,
+        message: error instanceof Error ? error.message : "Could not save that key."
+      };
+    }
+  });
+  ipcMain.handle("dialogue:clear-key", (event): DialogueActionResult => {
+    if (settingsWindow?.webContents !== event.sender) {
+      return { ...dialogueSettingsStatus(), ok: false, message: "Could not clear the key." };
+    }
+    try {
+      secretStore.clearKey();
+      refreshDialogueProvider();
+      return {
+        ...dialogueSettingsStatus(),
+        ok: true,
+        message: developmentApiKey() ? "Saved key cleared; development key is still active" : "Saved key cleared"
+      };
+    } catch {
+      return { ...dialogueSettingsStatus(), ok: false, message: "Could not clear the key." };
+    }
+  });
+  ipcMain.handle("dialogue:test", (event) => settingsWindow?.webContents === event.sender
+    ? testGroqConnection()
+    : Promise.resolve({ ...dialogueSettingsStatus(), ok: false, message: "Unavailable" }));
   ipcMain.on("creature:click", (event) => { if (isApplicationWindow(event.sender)) brain.interact("click"); });
   ipcMain.on("room:open", (event) => { if (isApplicationWindow(event.sender)) openRoom(); });
   ipcMain.on("settings:open", (event) => { if (isApplicationWindow(event.sender)) openSettings(); });
@@ -522,6 +642,23 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     if (dialogueProvider !== "Local voice") await new Promise((resolve) => setTimeout(resolve, 25));
   }
   if (dialogueProvider !== "Local voice") throw new Error(`Expected local dialogue in smoke mode; found ${dialogueProvider}.`);
+  const smokeSecret = "tiny-mint-smoke-secret";
+  const saveSecretResult = await settings.webContents.executeJavaScript(
+    `window.tinyMint.saveGroqKey(${JSON.stringify(smokeSecret)})`
+  ) as DialogueActionResult;
+  if (!saveSecretResult.ok || !saveSecretResult.keySaved || JSON.stringify(saveSecretResult).includes(smokeSecret)) {
+    throw new Error("Secure Groq key save returned an invalid or secret-bearing renderer result.");
+  }
+  const encryptedSecret = readFileSync(join(app.getPath("userData"), "groq-key.bin"));
+  if (encryptedSecret.includes(Buffer.from(smokeSecret)) || secretStore.readKey() !== smokeSecret) {
+    throw new Error("Secure Groq key storage did not encrypt and recover the test value.");
+  }
+  const clearSecretResult = await settings.webContents.executeJavaScript(
+    "window.tinyMint.clearGroqKey()"
+  ) as DialogueActionResult;
+  if (!clearSecretResult.ok || clearSecretResult.keySaved || secretStore.hasKey()) {
+    throw new Error("Secure Groq key clear did not remove the test value.");
+  }
   const setCheckbox = async (key: keyof CreaturePreferences, checked: boolean): Promise<void> => {
     await settings.webContents.executeJavaScript(`
       (() => {
@@ -937,6 +1074,9 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     loadedRoomProps: roomRender.loadedProps,
     settingsControlCount,
     dialogueProvider,
+    secureKeyEncrypted: true,
+    secureKeyRendererRedacted: true,
+    secureKeyClear: true,
     manualTalkWhileInitiationDisabled: true,
     speechWindowOnScreen,
     speechEdgeBoundsValid,
@@ -969,7 +1109,10 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
+  app.setAppUserModelId("com.tinymint.desktop");
   store = new StateStore(join(app.getPath("userData"), "creature-state.json"));
+  secretStore = new SecretStore(join(app.getPath("userData"), "groq-key.bin"), safeStorage);
   const initialState = store.load();
   brain = new CreatureBrain(initialState);
   interactionController = new InteractionController({

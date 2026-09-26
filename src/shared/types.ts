@@ -1,6 +1,23 @@
 export type Location = "desktop" | "room";
 export type Mood = "neutral" | "chill" | "curious" | "excited" | "playful" | "sleepy" | "bored";
-export type DialogueProviderStatus = "Local voice" | "Groq ready";
+export type DialogueProviderStatus =
+  | "Local voice"
+  | "Groq configured"
+  | "Groq connected"
+  | "Groq unavailable — using Local voice"
+  | "Secure storage unavailable — using Local voice";
+
+export interface DialogueSettingsStatus {
+  provider: DialogueProviderStatus;
+  keySaved: boolean;
+  secureStorageAvailable: boolean;
+  developmentKeyActive: boolean;
+}
+
+export interface DialogueActionResult extends DialogueSettingsStatus {
+  ok: boolean;
+  message: string;
+}
 
 export type RoomPropId =
   | "door"

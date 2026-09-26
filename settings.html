@@ -53,13 +53,24 @@
           <input type="checkbox" data-preference="reducedMotion" />
         </label>
         <label class="setting-row">
-          <span><strong>Pause Bebop</strong><small>Pause autonomous decisions without hiding him.</small></span>
+          <span><strong>Pause Tiny Mint</strong><small>Pause autonomous decisions without hiding him.</small></span>
           <input type="checkbox" data-preference="paused" />
         </label>
       </section>
       <section aria-labelledby="dialogue-heading">
         <h2 id="dialogue-heading">Dialogue</h2>
         <p id="dialogue-status" class="dialogue-status" role="status" aria-live="polite">Checking…</p>
+        <label class="key-field" for="groq-key">
+          <span>API key</span>
+          <input id="groq-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a new Groq key" />
+        </label>
+        <p id="key-state" class="key-state"></p>
+        <div class="dialogue-actions">
+          <button id="save-key" type="button">Save key</button>
+          <button id="clear-key" type="button" class="secondary">Clear</button>
+          <button id="test-connection" type="button" class="secondary">Test connection</button>
+        </div>
+        <p id="dialogue-message" class="status" role="status" aria-live="polite"></p>
       </section>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </main>

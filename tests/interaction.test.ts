@@ -311,7 +311,7 @@ describe("dialogue provider configuration", () => {
     expect(requestedModels).toEqual([]);
 
     const defaultModel = createDialogueProvider(" test-key ", " ", { fetcher });
-    expect(defaultModel.status).toBe("Groq ready");
+    expect(defaultModel.status).toBe("Groq configured");
     await defaultModel.provider.respond(request);
     const overriddenModel = createDialogueProvider("test-key", " custom/model ", { fetcher });
     await overriddenModel.provider.respond(request);
