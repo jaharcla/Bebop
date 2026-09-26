@@ -21,10 +21,13 @@ export function validateUtterance(value: unknown): CreatureUtterance {
   if (emotion !== undefined && (typeof emotion !== "string" || !moods.includes(emotion as Mood))) {
     throw new Error("Dialogue emotion is invalid.");
   }
+  const endConversation = candidate.endConversation ?? false;
+  if (typeof endConversation !== "boolean") throw new Error("Dialogue endConversation must be a boolean.");
 
   return {
     text,
     quickResponses: quickResponses.slice(0, 3).map((reply: string) => reply.trim().slice(0, MAX_QUICK_RESPONSE_LENGTH)).filter(Boolean),
-    ...(emotion === undefined ? {} : { emotion: emotion as Mood })
+    ...(emotion === undefined ? {} : { emotion: emotion as Mood }),
+    endConversation
   };
 }
