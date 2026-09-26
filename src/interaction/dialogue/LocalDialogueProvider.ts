@@ -17,7 +17,8 @@ const reactions = ["oh wait that’s cool", "huh", "fair enough", "okay that’s
 export class LocalDialogueProvider implements DialogueProvider {
   constructor(private readonly random: () => number = Math.random) {}
 
-  async respond(request: DialogueRequest): Promise<CreatureUtterance> {
+  async respond(request: DialogueRequest, signal?: AbortSignal): Promise<CreatureUtterance> {
+    if (signal?.aborted) throw new DOMException("Dialogue request aborted.", "AbortError");
     const previousCreatureLines = request.messages
       .filter((message) => message.role === "creature")
       .map((message) => message.text);
@@ -40,7 +41,8 @@ export class LocalDialogueProvider implements DialogueProvider {
     return validateUtterance({
       text: line,
       quickResponses: [...quickResponses],
-      emotion: request.context.mood
+      emotion: request.context.mood,
+      endConversation: Boolean(latestUserMessage && request.messages.length >= 5)
     });
   }
 }
