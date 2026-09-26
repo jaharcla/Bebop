@@ -161,11 +161,8 @@ function createDialogueProvider(): DialogueProvider {
   const local = new LocalDialogueProvider();
   if (process.env.TINY_MINT_SMOKE_OUTPUT) return local;
   const apiKey = process.env.GROQ_API_KEY?.trim();
-  const model = process.env.GROQ_MODEL?.trim();
-  if (!apiKey || !model) {
-    if (apiKey || model) console.warn("Both GROQ_API_KEY and GROQ_MODEL are needed; Tiny Mint will use local dialogue.");
-    return local;
-  }
+  if (!apiKey) return local;
+  const model = process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-20b";
   const groq = new GroqDialogueProvider(apiKey, model);
   return new FallbackDialogueProvider(groq, local, (error) => {
     const detail = error instanceof Error ? error.message : String(error);
