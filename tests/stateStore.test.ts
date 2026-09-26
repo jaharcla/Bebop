@@ -17,7 +17,7 @@ describe("StateStore", () => {
     const state = { ...defaultState(), mood: "playful" as const, position: { x: 123, y: 456 } };
     store.save(state);
     expect(store.load()).toMatchObject({ mood: "playful", position: { x: 123, y: 456 } });
-    expect(JSON.parse(readFileSync(file, "utf8")).schemaVersion).toBe(1);
+    expect(JSON.parse(readFileSync(file, "utf8")).schemaVersion).toBe(2);
   });
 
   it("recovers from corrupt data", () => {
@@ -25,7 +25,7 @@ describe("StateStore", () => {
     directories.push(directory);
     const file = join(directory, "state.json");
     writeFileSync(file, "not-json");
-    expect(new StateStore(file).load().schemaVersion).toBe(1);
+    expect(new StateStore(file).load().schemaVersion).toBe(2);
   });
 
   it("hydrates older partial nested state from current defaults", () => {
@@ -53,7 +53,19 @@ describe("StateStore", () => {
       },
       personality: { creativity: 0.2, curiosity: defaults.personality.curiosity },
       privacy: { awarenessEnabled: true, contextLevel: "minimal" },
-      room: { target: "rug" }
+      room: { target: "door" }
     });
+  });
+
+  it("migrates schema 1 state and clears temporary execution state", () => {
+    const directory = mkdtempSync(join(tmpdir(), "tiny-mint-state-"));
+    directories.push(directory);
+    const file = join(directory, "state.json");
+    writeFileSync(file, JSON.stringify({ schemaVersion: 1, room: { target: "desk" }, mood: "playful" }));
+    const loaded = new StateStore(file).load();
+    expect(loaded.schemaVersion).toBe(2);
+    expect(loaded.room.target).toBe("desk");
+    expect(loaded.room.carriedItem).toBeNull();
+    expect(loaded.impulse).toBeNull();
   });
 });

@@ -41,8 +41,11 @@ let secretStore: SecretStore;
 let speechWindowSize = { ...SPEECH_WINDOW_MIN_SIZE };
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
+let cursorTimer: NodeJS.Timeout | undefined;
 let dragOrigin: { pointerX: number; pointerY: number; windowX: number; windowY: number } | null = null;
-let wanderDirection = 1;
+let desktopGoal: { x: number; y: number; kind: "wander" | "cursor" | "exit" | "enter" } | null = null;
+let cursorPoint: Electron.Point | null = null;
+let lastBroadcastLocation: Location | undefined;
 
 const preloadPath = join(__dirname, "preload.js");
 const devUrl = process.env.VITE_DEV_SERVER_URL;
@@ -327,6 +330,17 @@ function sendToRoom(): void {
 }
 
 function broadcast(state: CreatureState): void {
+  const previousLocation = lastBroadcastLocation;
+  lastBroadcastLocation = state.location;
+  if (previousLocation === "room" && state.location === "desktop" && overlayWindow && !overlayWindow.isDestroyed()) {
+    const workArea = screen.getDisplayNearestPoint(state.position).workArea;
+    const entry = { x: workArea.x + 6, y: Math.max(workArea.y, Math.min(state.position.y, workArea.y + workArea.height - OVERLAY_SIZE)) };
+    overlayWindow.setPosition(entry.x, entry.y);
+    brain.setPosition(entry.x, entry.y, { notify: false });
+    desktopGoal = { x: Math.min(workArea.x + workArea.width - OVERLAY_SIZE, entry.x + 180), y: entry.y, kind: "enter" };
+    brain.setActivity("wander");
+    return;
+  }
   for (const window of [overlayWindow, roomWindow]) {
     if (window && !window.isDestroyed()) window.webContents.send("state:changed", state);
   }
@@ -351,27 +365,69 @@ function scheduleSave(): void {
 }
 
 function updateMovement(state: CreatureState): void {
-  const shouldMove = state.location === "desktop" && state.currentActivity === "wander" && state.preferences.roamingEnabled && !state.preferences.paused && !dragOrigin;
+  const movingActivity = state.currentActivity === "wander" || state.currentActivity === "observe" || state.currentActivity === "visitRoom";
+  const shouldMove = state.location === "desktop" && movingActivity && state.preferences.roamingEnabled && !state.preferences.paused && !dragOrigin;
   if (!shouldMove && movementTimer) {
     clearInterval(movementTimer);
     movementTimer = undefined;
+    desktopGoal = null;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       const [x, y] = overlayWindow.getPosition();
       brain.setPosition(x, y, { notify: false });
     }
   }
   if (shouldMove && !movementTimer) {
+    desktopGoal ??= chooseDesktopGoal(state);
     movementTimer = setInterval(() => {
       if (!overlayWindow || overlayWindow.isDestroyed()) return;
       const [x, y] = overlayWindow.getPosition();
-      const proposed = clampPosition(x + wanderDirection * 3, y);
-      if (proposed.x === x) wanderDirection *= -1;
+      const current = brain.snapshot();
+      if (!desktopGoal || (current.currentActivity === "observe" && desktopGoal.kind !== "cursor")
+        || (current.currentActivity === "visitRoom" && desktopGoal.kind !== "exit")) {
+        desktopGoal = chooseDesktopGoal(current);
+      }
+      const dx = desktopGoal.x - x;
+      const dy = desktopGoal.y - y;
+      const distance = Math.hypot(dx, dy);
+      if (distance < 5) {
+        const completed = desktopGoal.kind;
+        desktopGoal = null;
+        if (completed === "exit") brain.setLocation("room");
+        else brain.setActivity("idle");
+        return;
+      }
+      const proposed = clampPosition(x + dx / distance * 3, y + dy / distance * 3);
       overlayWindow.setPosition(proposed.x, proposed.y);
       brain.setPosition(proposed.x, proposed.y, { notify: false });
       positionSpeechWindow();
     }, 80);
   }
 }
+
+function chooseDesktopGoal(state: CreatureState): { x: number; y: number; kind: "wander" | "cursor" | "exit" | "enter" } {
+  const bounds = screen.getDisplayNearestPoint(state.position).workArea;
+  if (state.currentActivity === "visitRoom") {
+    const leftDistance = Math.abs(state.position.x - bounds.x);
+    const rightX = bounds.x + bounds.width - OVERLAY_SIZE;
+    return { x: leftDistance < Math.abs(rightX - state.position.x) ? bounds.x : rightX, y: state.position.y, kind: "exit" };
+  }
+  if (state.currentActivity === "observe" && state.preferences.cursorInteraction && cursorPoint) {
+    const preferredDistance = 150 - state.personality.confidence * 55;
+    const direction = cursorPoint.x < state.position.x ? 1 : -1;
+    return {
+      x: Math.max(bounds.x, Math.min(rightEdge(bounds), cursorPoint.x + direction * preferredDistance - OVERLAY_SIZE / 2)),
+      y: Math.max(bounds.y, Math.min(bounds.y + bounds.height - OVERLAY_SIZE, cursorPoint.y - OVERLAY_SIZE / 2)),
+      kind: "cursor"
+    };
+  }
+  return {
+    x: bounds.x + Math.random() * Math.max(1, bounds.width - OVERLAY_SIZE),
+    y: bounds.y + Math.random() * Math.max(1, bounds.height - OVERLAY_SIZE),
+    kind: "wander"
+  };
+}
+
+const rightEdge = (bounds: Electron.Rectangle): number => bounds.x + bounds.width - OVERLAY_SIZE;
 
 function showCreatureMenu(): void {
   const state = brain.snapshot();
@@ -612,7 +668,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   const watchdog = setTimeout(() => {
     console.error(`TINY_MINT_SMOKE_FAILED Timed out after 30 seconds (location=${brain.snapshot().location}, activity=${brain.snapshot().currentActivity}, roomWindow=${Boolean(roomWindow)}, roomUrl=${roomWindow?.webContents.getURL() ?? "none"}).`);
     app.exit(1);
-  }, 30_000);
+  }, 45_000);
   await new Promise((resolve) => setTimeout(resolve, 1_200));
   if (!overlayWindow) throw new Error("Expected the Tiny Mint overlay window.");
   const overlayPixels = await overlayWindow.webContents.executeJavaScript(`
@@ -1020,10 +1076,49 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     throw new Error(`Room v3 rendering failed: ${JSON.stringify(roomRender)}`);
   }
   await room.webContents.executeJavaScript(`document.querySelector('[data-prop="desk"]').click()`);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  if (brain.snapshot().currentActivity !== "draw" || brain.snapshot().room.target !== "desk") {
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const manualRoomWalksFirst = brain.snapshot().currentActivity === "wander" && brain.snapshot().room.target === "desk";
+  const manualRoomDeadline = Date.now() + 7_000;
+  while (brain.snapshot().currentActivity !== "draw" && Date.now() < manualRoomDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (!manualRoomWalksFirst || brain.snapshot().currentActivity !== "draw" || brain.snapshot().room.target !== "desk") {
     throw new Error("Manual room prop interaction failed with room autonomy disabled.");
   }
+  await room.webContents.executeJavaScript(`document.querySelector('[data-prop="bookshelf"]').click()`);
+  const carryDeadline = Date.now() + 7_000;
+  while (brain.snapshot().room.carriedItem !== "book" && Date.now() < carryDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const carriedBookRender = await room.webContents.executeJavaScript(`
+    (() => {
+      const carried = document.querySelector('#carried-item');
+      const home = document.querySelector('[data-prop="book"]');
+      return {
+        carriedVisible: Boolean(carried && !carried.hidden && carried.complete && carried.naturalWidth > 0),
+        homeHidden: home?.dataset.carried === 'true' && getComputedStyle(home).visibility === 'hidden'
+      };
+    })()
+  `) as { carriedVisible: boolean; homeHidden: boolean };
+  if (brain.snapshot().room.carriedItem !== "book" || brain.snapshot().currentAnimation !== "carry"
+    || !carriedBookRender.carriedVisible || !carriedBookRender.homeHidden) {
+    throw new Error(`Carried book did not render consistently: ${JSON.stringify(carriedBookRender)}.`);
+  }
+  writeFileSync(join(outputDirectory, "room-book-carry.png"), (await room.capturePage()).toPNG());
+  await room.webContents.executeJavaScript(`document.querySelector('[data-prop="bed"]').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const interruptedBookRender = await room.webContents.executeJavaScript(`
+    (() => {
+      const carried = document.querySelector('#carried-item');
+      const home = document.querySelector('[data-prop="book"]');
+      return { carriedHidden: carried?.hidden === true, homeVisible: getComputedStyle(home).visibility !== 'hidden' };
+    })()
+  `) as { carriedHidden: boolean; homeVisible: boolean };
+  const manualRoomCarryRestoresOnInterrupt = brain.snapshot().room.carriedItem === null
+    && brain.snapshot().room.target === "bed"
+    && interruptedBookRender.carriedHidden
+    && interruptedBookRender.homeVisible;
+  if (!manualRoomCarryRestoresOnInterrupt) throw new Error("Interrupting a carried-book plan did not restore the room item.");
   const overlayHiddenInRoom = !overlayWindow.isVisible();
   if (!overlayHiddenInRoom) throw new Error("Desktop overlay remained visible while Tiny Mint was in the room.");
   room.close();
@@ -1060,7 +1155,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   if (!overlayVisibleOnDesktop) throw new Error("Desktop overlay did not reappear after returning from the room.");
   store.save(brain.snapshot());
   const persisted = store.load();
-  if (persisted.schemaVersion !== 1 || persisted.location !== "desktop") {
+  if (persisted.schemaVersion !== 2 || persisted.location !== "desktop") {
     throw new Error("Returned desktop state was not persisted correctly.");
   }
   const overlayBounds = overlayWindow.getBounds();
@@ -1094,6 +1189,9 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     reducedMotionIndependentOfPause: !brain.snapshot().preferences.paused,
     startupSettingRoundTrip,
     overlayHiddenInRoom,
+    manualRoomWalksFirst,
+    carriedBookRender,
+    manualRoomCarryRestoresOnInterrupt,
     stateContinuesWithRoomClosed,
     talkFromRoomReturnsToDesktop,
     roomHandoffAfterConversation,
@@ -1129,6 +1227,10 @@ app.whenReady().then(() => {
   interactionController.start();
   brain.subscribe(broadcast);
   brain.start();
+  cursorTimer = setInterval(() => {
+    const state = brain.snapshot();
+    cursorPoint = state.preferences.cursorInteraction && state.location === "desktop" ? screen.getCursorScreenPoint() : null;
+  }, 600);
   screen.on("display-metrics-changed", positionSpeechWindow);
   screen.on("display-added", positionSpeechWindow);
   screen.on("display-removed", positionSpeechWindow);
@@ -1150,6 +1252,7 @@ app.on("before-quit", () => {
   interactionController?.dispose();
   if (saveTimer) clearTimeout(saveTimer);
   if (movementTimer) clearInterval(movementTimer);
+  if (cursorTimer) clearInterval(cursorTimer);
   if (brain && store) store.save(brain.snapshot());
 });
 app.on("will-quit", () => {

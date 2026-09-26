@@ -47,6 +47,7 @@ const propImages: Record<RoomPropId, string> = {
 
 const canvas = required<HTMLCanvasElement>("#mint");
 const creature = required<HTMLElement>("#room-creature");
+const carriedItem = required<HTMLImageElement>("#carried-item");
 const activity = required<HTMLParagraphElement>("#activity");
 const send = required<HTMLButtonElement>("#send");
 const debug = required<HTMLDetailsElement>("#debug");
@@ -85,17 +86,6 @@ for (const prop of roomProps) {
   propButtons.set(prop.id, button);
 }
 
-function anchorFor(id: RoomPropId): { x: number; y: number } {
-  const prop = roomPropById(id);
-  if (prop.action === "sleep") return { x: prop.x, y: prop.y + 12 };
-  if (prop.id === "desk") return { x: prop.x, y: prop.y + 72 };
-  if (prop.id === "chair") return { x: prop.x, y: prop.y + 28 };
-  return {
-    x: Math.max(65, Math.min(895, prop.x)),
-    y: Math.max(320, Math.min(560, prop.y + 60))
-  };
-}
-
 function render(state: CreatureState): void {
   const isHome = state.location === "room";
   document.documentElement.classList.toggle(
@@ -107,19 +97,25 @@ function render(state: CreatureState): void {
   animator.setPaused(state.preferences.paused || state.preferences.reducedMotion || systemMotionPreference.matches);
   animator.setAnimation(state.currentAnimation);
 
-  for (const [id, button] of propButtons) button.dataset.selected = String(isHome && id === state.room.target);
+  for (const [id, button] of propButtons) {
+    button.dataset.selected = String(isHome && id === state.room.target);
+    button.dataset.carried = String(id === state.room.carriedItem);
+  }
 
   if (isHome) {
     const target = roomPropById(state.room.target);
-    const anchor = anchorFor(state.room.target);
-    creature.style.left = `${(anchor.x / 960) * 100}%`;
-    creature.style.top = `${(anchor.y / 600) * 100}%`;
-    creature.style.zIndex = String(40 + Math.round(anchor.y));
+    const position = state.room.position;
+    creature.style.left = `${(position.x / 960) * 100}%`;
+    creature.style.top = `${(position.y / 600) * 100}%`;
+    creature.style.zIndex = String(40 + Math.round(position.y));
     creature.classList.toggle("music", state.currentActivity === "music");
     creature.classList.toggle("play", state.currentActivity === "play");
-    activity.textContent = `${target.message} · ${state.mood}`;
+    carriedItem.hidden = !state.room.carriedItem;
+    if (state.room.carriedItem) carriedItem.src = propImages[state.room.carriedItem];
+    activity.textContent = `${state.room.intention ?? target.message} · ${state.mood}`;
   } else {
     creature.classList.remove("music", "play");
+    carriedItem.hidden = true;
     activity.textContent = "Away on the desktop";
   }
 

@@ -17,11 +17,13 @@ button { font: inherit; color: inherit; }
 .room-prop:hover::after, .room-prop:focus-visible::after { content: attr(aria-label); position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -4px); padding: 4px 7px; border: 1px solid #9db39a; border-radius: 8px; background: #fff8e8ed; color: #355b52; font-size: 11px; white-space: nowrap; z-index: 2000; }
 .room-prop:focus-visible { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 4px #f8efd9); }
 .room-prop[data-selected="true"] { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 5px #8cc3a4); }
-#room-creature { position: absolute; width: 12.5%; aspect-ratio: 1; transform: translate(-50%, -100%); transition: left 650ms ease, top 650ms ease; pointer-events: none; z-index: 1000; }
-#room-creature.walking { transition-duration: 750ms; }
+.room-prop[data-carried="true"] { visibility: hidden; }
+#room-creature { position: absolute; width: 12.5%; aspect-ratio: 1; transform: translate(-50%, -100%); transition: left 120ms linear, top 120ms linear; pointer-events: none; z-index: 1000; }
 #room-creature.music { animation: quiet-sway 1.4s ease-in-out infinite; }
 #room-creature.play { animation: tiny-hop .8s ease-in-out infinite; }
 #mint { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+#carried-item { position: absolute; left: 50%; bottom: 4%; width: 42%; height: 42%; object-fit: contain; transform: translateX(-50%); image-rendering: pixelated; }
+#carried-item[hidden] { display: none; }
 #room-bar { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 16px; border-top: 1px solid #cbd8c5; background: #f7f9f2; }
 #activity { margin: 0; font-size: 13px; color: #536e63; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #send { flex: 0 0 auto; padding: 8px 12px; border: 1px solid #b9ccb8; border-radius: 10px; background: #fffaf0; cursor: pointer; }

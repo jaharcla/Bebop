@@ -84,6 +84,29 @@ export interface Personality {
   sociability: number;
 }
 
+export type ImpulseKind = "create" | "explore" | "play" | "rest" | "seek-company" | "seek-solitude";
+
+export interface BehaviorImpulse {
+  kind: ImpulseKind;
+  strength: number;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface HabitProfile {
+  activityAffinity: Partial<Record<Activity, number>>;
+  propAffinity: Partial<Record<RoomPropId, number>>;
+  activityUses: Partial<Record<Activity, number>>;
+  propUses: Partial<Record<RoomPropId, number>>;
+  recentActivities: Activity[];
+  recentProps: RoomPropId[];
+}
+
+export interface WorldPosition {
+  x: number;
+  y: number;
+}
+
 export interface CreaturePreferences {
   alwaysOnTop: boolean;
   cursorInteraction: boolean;
@@ -97,7 +120,7 @@ export interface CreaturePreferences {
 }
 
 export interface CreatureState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   location: Location;
   currentActivity: Activity;
   currentAnimation: AnimationName;
@@ -113,7 +136,14 @@ export interface CreatureState {
   lastCreatureInteraction: number;
   lastActivityChange: number;
   position: { x: number; y: number };
-  room: { target: RoomPropId };
+  room: {
+    target: RoomPropId;
+    position: WorldPosition;
+    carriedItem: RoomPropId | null;
+    intention: string | null;
+  };
+  habits: HabitProfile;
+  impulse: BehaviorImpulse | null;
   preferences: CreaturePreferences;
   privacy: { awarenessEnabled: boolean; contextLevel: "minimal" };
   personality: Personality;

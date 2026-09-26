@@ -17,7 +17,8 @@ describe("CreatureBrain", () => {
     const brain = new CreatureBrain(defaultState(), () => 0.5);
     brain.setLocation("room");
     expect(brain.snapshot().location).toBe("room");
-    expect(brain.snapshot().currentActivity).toBe("rest");
+    expect(brain.snapshot().currentActivity).toBe("wander");
+    expect(brain.snapshot().room.intention).toBe("use the rug");
     brain.setLocation("desktop");
     expect(brain.snapshot().location).toBe("desktop");
     expect(brain.snapshot().currentActivity).toBe("idle");
@@ -79,12 +80,12 @@ describe("CreatureBrain", () => {
     const brain = new CreatureBrain(defaultState(), () => 0.5);
     brain.patchPreferences({ roomAutonomyEnabled: false });
     brain.setLocation("room");
-    expect(brain.snapshot().currentActivity).toBe("rest");
+    expect(brain.snapshot().currentActivity).toBe("wander");
 
     brain.useRoomProp("desk");
-
-    expect(brain.snapshot().currentActivity).toBe("draw");
     expect(brain.snapshot().room.target).toBe("desk");
+    expect(brain.snapshot().room.intention).toBe("make and show a sketch");
+    expect(brain.snapshot().currentAnimation).toBe("walk");
   });
 
   it("discourages automatic room transitions during conversation without stopping the creature", () => {

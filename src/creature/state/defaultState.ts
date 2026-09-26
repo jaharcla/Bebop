@@ -1,7 +1,7 @@
 import type { CreatureState } from "../../shared/types";
 
 export const defaultState = (): CreatureState => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   location: "desktop",
   currentActivity: "idle",
   currentAnimation: "idle",
@@ -17,7 +17,16 @@ export const defaultState = (): CreatureState => ({
   lastCreatureInteraction: Date.now(),
   lastActivityChange: Date.now(),
   position: { x: 80, y: 80 },
-  room: { target: "rug" },
+  room: { target: "door", position: { x: 850, y: 430 }, carriedItem: null, intention: null },
+  habits: {
+    activityAffinity: {},
+    propAffinity: {},
+    activityUses: {},
+    propUses: {},
+    recentActivities: [],
+    recentProps: []
+  },
+  impulse: null,
   preferences: {
     alwaysOnTop: true,
     cursorInteraction: true,
