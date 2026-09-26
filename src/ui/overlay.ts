@@ -44,6 +44,16 @@ function applyAnimation(): void {
   animator.setFlipped(state.currentAnimation !== "reach-left" && state.currentAnimation !== "reach-right" && state.facing === "left");
 }
 
+function queueTransientRecovery(): void {
+  clearTransientTimer();
+  transient = true;
+  transientTimer = window.setTimeout(() => {
+    transient = false;
+    transientTimer = undefined;
+    applyAnimation();
+  }, 360);
+}
+
 function setClickThrough(ignore: boolean): void {
   if (ignore === clickThrough || dragging) return;
   clickThrough = ignore;
@@ -59,12 +69,21 @@ canvas.addEventListener("pointermove", (event) => {
   if (dragging) {
     moved ||= Math.hypot(event.screenX - dragStart.x, event.screenY - dragStart.y) > 4;
     window.tinyMint.drag(event.screenX, event.screenY);
-  } else applyAnimation();
+  } else {
+    const current = animator.getAnimation();
+    if (current === "reach-left" || current === "reach-right") {
+      queueTransientRecovery();
+    }
+    applyAnimation();
+  }
 });
 
 canvas.addEventListener("pointerleave", () => {
   pointer = undefined;
-  if (!dragging) applyAnimation();
+  if (!dragging) {
+    queueTransientRecovery();
+    applyAnimation();
+  }
 });
 
 canvas.addEventListener("pointerdown", (event) => {

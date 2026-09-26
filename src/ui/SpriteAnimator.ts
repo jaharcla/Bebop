@@ -15,6 +15,7 @@ export class SpriteAnimator {
   private directionalFrame = 0;
   private flip = false;
   private ready = false;
+  private holdElapsed = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -27,12 +28,13 @@ export class SpriteAnimator {
   }
 
   setAnimation(name: AnimationName, restart = false): void {
-    if (name === this.requested && !restart) return;
+    if (name === this.requested && !restart && this.active === name) return;
     this.requested = name;
     this.active = name;
     this.sequenceIndex = 0;
     this.frame = animations[name].sequence[0] ?? 0;
     this.elapsed = 0;
+    this.holdElapsed = 0;
   }
 
   getAnimation(): AnimationName { return this.active; }
@@ -83,14 +85,25 @@ export class SpriteAnimator {
         this.sequenceIndex = lastIndex;
         this.frame = definition.sequence[lastIndex] ?? 0;
         this.elapsed = 0;
+        this.holdElapsed += delta;
+        if (this.holdElapsed > 240) {
+          this.active = "idle";
+          this.requested = "idle";
+          this.sequenceIndex = 0;
+          this.frame = animations.idle.sequence[0] ?? 0;
+          this.elapsed = 0;
+          this.holdElapsed = 0;
+        }
         return;
       }
 
       if (definition.mode === "once-idle") {
         this.active = "idle";
+        this.requested = "idle";
         this.sequenceIndex = 0;
         this.frame = animations.idle.sequence[0] ?? 0;
         this.elapsed = 0;
+        this.holdElapsed = 0;
         return;
       }
 
