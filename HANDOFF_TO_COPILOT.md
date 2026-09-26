@@ -49,3 +49,13 @@ The v3 art pack has been promoted into the real Electron/TypeScript app.
 ## Recommended next task
 
 Run the app on Windows and visually QA every v3 state/prop interaction. Fix only integration/layout issues first. Once the art pass is confirmed, continue with the planned speech-bubble / quick-response interaction layer or computer-awareness layer rather than reworking the sprite system again.
+
+## Toggleability and stability pass
+
+- Creature Brain remains the authoritative owner of position; desktop wandering synchronizes position without publishing a state event every movement frame.
+- Persistent preferences now cover desktop roaming, room visits, room autonomy, cursor play, future creature-initiated interactions, reduced motion, master pause, always-on-top, and Windows login startup.
+- Activity choices respect pause and the roaming / room-visit / room-autonomy preferences. Manual room props and transitions remain available.
+- The separate Settings window is reachable from the tray and creature context menus.
+- Schema-v1 hydration merges nested position, room, privacy, personality, and preference defaults, so older partial preferences gain new controls without deleting saves.
+- Reduced motion (including the Windows preference) only freezes visual sprite animation. It never silently changes master pause.
+- `npm run typecheck`, `npm test`, `npm run build`, and the Electron smoke cover the preference and room-handoff paths.

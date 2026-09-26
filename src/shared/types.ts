@@ -66,6 +66,18 @@ export interface Personality {
   sociability: number;
 }
 
+export interface CreaturePreferences {
+  alwaysOnTop: boolean;
+  cursorInteraction: boolean;
+  paused: boolean;
+  reducedMotion: boolean;
+  roamingEnabled: boolean;
+  roomVisitsEnabled: boolean;
+  roomAutonomyEnabled: boolean;
+  interactionsEnabled: boolean;
+  startWithWindows: boolean;
+}
+
 export interface CreatureState {
   schemaVersion: 1;
   location: Location;
@@ -84,12 +96,7 @@ export interface CreatureState {
   lastActivityChange: number;
   position: { x: number; y: number };
   room: { target: RoomPropId };
-  preferences: {
-    alwaysOnTop: boolean;
-    cursorInteraction: boolean;
-    paused: boolean;
-    reducedMotion: boolean;
-  };
+  preferences: CreaturePreferences;
   privacy: { awarenessEnabled: boolean; contextLevel: "minimal" };
   personality: Personality;
 }

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tiny Mint Settings</title>
+  </head>
+  <body>
+    <main id="settings">
+      <header>
+        <p class="eyebrow">Tiny Mint</p>
+        <h1>Settings</h1>
+        <p class="intro">A few gentle controls for how he spends his time.</p>
+      </header>
+      <section aria-labelledby="general-heading">
+        <h2 id="general-heading">General</h2>
+        <label class="setting-row">
+          <span><strong>Always on top</strong><small>Keep Tiny Mint above other windows.</small></span>
+          <input type="checkbox" data-preference="alwaysOnTop" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Start with Windows</strong><small>Register sign-in startup for the packaged Windows app.</small></span>
+          <input type="checkbox" data-preference="startWithWindows" />
+        </label>
+      </section>
+      <section aria-labelledby="behavior-heading">
+        <h2 id="behavior-heading">Behavior</h2>
+        <label class="setting-row">
+          <span><strong>Roaming</strong><small>Let him wander around your desktop.</small></span>
+          <input type="checkbox" data-preference="roamingEnabled" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Cursor play</strong><small>Look toward and reach for the pointer.</small></span>
+          <input type="checkbox" data-preference="cursorInteraction" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Room visits</strong><small>Let him travel between the desktop and room.</small></span>
+          <input type="checkbox" data-preference="roomVisitsEnabled" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Room autonomy</strong><small>Let him choose activities while at home.</small></span>
+          <input type="checkbox" data-preference="roomAutonomyEnabled" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Creature-initiated interactions</strong><small>Allow future gentle check-ins.</small></span>
+          <input type="checkbox" data-preference="interactionsEnabled" />
+        </label>
+      </section>
+      <section aria-labelledby="accessibility-heading">
+        <h2 id="accessibility-heading">Accessibility</h2>
+        <label class="setting-row">
+          <span><strong>Reduced motion</strong><small>Freeze sprite animation while keeping his life running.</small></span>
+          <input type="checkbox" data-preference="reducedMotion" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Pause Bebop</strong><small>Pause autonomous decisions without hiding him.</small></span>
+          <input type="checkbox" data-preference="paused" />
+        </label>
+      </section>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="/src/ui/settings.ts"></script>
+  </body>
+</html>

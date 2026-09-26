@@ -27,4 +27,33 @@ describe("StateStore", () => {
     writeFileSync(file, "not-json");
     expect(new StateStore(file).load().schemaVersion).toBe(1);
   });
+
+  it("hydrates older partial nested state from current defaults", () => {
+    const directory = mkdtempSync(join(tmpdir(), "tiny-mint-"));
+    directories.push(directory);
+    const file = join(directory, "state.json");
+    const defaults = defaultState();
+    writeFileSync(file, JSON.stringify({
+      ...defaults,
+      preferences: { alwaysOnTop: false, cursorInteraction: false, paused: false, reducedMotion: false },
+      personality: { creativity: 0.2 },
+      privacy: { awarenessEnabled: true },
+      room: {}
+    }));
+
+    expect(new StateStore(file).load()).toMatchObject({
+      preferences: {
+        alwaysOnTop: false,
+        cursorInteraction: false,
+        roamingEnabled: true,
+        roomVisitsEnabled: true,
+        roomAutonomyEnabled: true,
+        interactionsEnabled: true,
+        startWithWindows: false
+      },
+      personality: { creativity: 0.2, curiosity: defaults.personality.curiosity },
+      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      room: { target: "rug" }
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import type { Activity, CreatureState, Location, RoomPropId } from "../shared/types";
+import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../shared/types";
 
 declare global {
   interface Window {
@@ -13,10 +13,11 @@ declare global {
       setClickThrough(ignore: boolean): void;
       openMenu(): void;
       openRoom(): void;
+      openSettings(): void;
       setLocation(location: Location): void;
       setActivity(activity: Activity): void;
       useRoomProp(prop: RoomPropId): void;
-      setPaused(paused: boolean): void;
+      updatePreferences(preferences: Partial<CreaturePreferences>): void;
       reset(): void;
     };
   }

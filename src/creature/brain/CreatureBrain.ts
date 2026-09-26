@@ -1,7 +1,7 @@
 import { animationFor, chooseActivity, type RandomSource } from "../behavior/behaviorEngine";
 import { roomPropById } from "../room/roomProps";
 import { clampState, defaultState } from "../state/defaultState";
-import type { Activity, CreatureState, Location, RoomPropId } from "../../shared/types";
+import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../../shared/types";
 
 export type StateListener = (state: CreatureState) => void;
 
@@ -45,10 +45,11 @@ export class CreatureBrain {
     this.publish();
   }
 
-  updatePosition(x: number, y: number): void {
+  setPosition(x: number, y: number, options: { notify?: boolean; userInteraction?: boolean } = {}): void {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Creature position must be finite.");
     this.state.position = { x: Math.round(x), y: Math.round(y) };
-    this.state.lastUserInteraction = Date.now();
-    this.publish();
+    if (options.userInteraction) this.state.lastUserInteraction = Date.now();
+    if (options.notify !== false) this.publish();
   }
 
   useRoomProp(id: RoomPropId): void {
@@ -89,7 +90,9 @@ export class CreatureBrain {
     this.state.location = location;
     if (location === "room") {
       const roll = this.random();
-      const activity: Activity = this.state.energy < 35
+      const activity: Activity = !this.state.preferences.roomAutonomyEnabled
+        ? "rest"
+        : this.state.energy < 35
         ? "sleep"
         : roll < 0.2
           ? "draw"
@@ -108,8 +111,17 @@ export class CreatureBrain {
     this.publish();
   }
 
-  patchPreferences(patch: Partial<CreatureState["preferences"]>): void {
+  patchPreferences(patch: Partial<CreaturePreferences>): void {
     this.state.preferences = { ...this.state.preferences, ...patch };
+    const schedulingPreferenceChanged = ["paused", "roamingEnabled", "roomVisitsEnabled", "roomAutonomyEnabled"]
+      .some((key) => Object.hasOwn(patch, key));
+    if (schedulingPreferenceChanged && !this.state.preferences.paused) {
+      this.nextDecisionAt = Date.now() + this.activityDuration(this.state.currentActivity);
+    }
+    if (Object.hasOwn(patch, "roamingEnabled") && !this.state.preferences.roamingEnabled && this.state.currentActivity === "wander") {
+      this.state.currentActivity = "idle";
+      this.state.currentAnimation = "idle";
+    }
     this.publish();
   }
 
@@ -121,6 +133,7 @@ export class CreatureBrain {
   }
 
   private tick(): void {
+    if (this.state.preferences.paused) return;
     const resting = ["rest", "sleep", "sit"].includes(this.state.currentActivity);
     this.state.energy += resting ? 0.7 : -0.12;
     this.state.boredom += this.state.currentActivity === "idle" ? 0.35 : -0.28;

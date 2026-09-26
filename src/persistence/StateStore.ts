@@ -9,10 +9,17 @@ export class StateStore {
   load(): CreatureState {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as Partial<CreatureState>;
-      if (parsed.schemaVersion !== 1 || !parsed.position || !parsed.preferences || !parsed.personality) {
-        return defaultState();
-      }
-      return { ...defaultState(), ...parsed } as CreatureState;
+      if (parsed.schemaVersion !== 1) return defaultState();
+      const defaults = defaultState();
+      return {
+        ...defaults,
+        ...parsed,
+        position: { ...defaults.position, ...parsed.position },
+        room: { ...defaults.room, ...parsed.room },
+        preferences: { ...defaults.preferences, ...parsed.preferences },
+        privacy: { ...defaults.privacy, ...parsed.privacy },
+        personality: { ...defaults.personality, ...parsed.personality }
+      };
     } catch {
       return defaultState();
     }

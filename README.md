@@ -27,10 +27,15 @@ npm run typecheck
 
 - Click Tiny Mint for a tap reaction.
 - Drag the opaque sprite pixels to pick him up; the v3 held and landing animations are wired in.
-- Right-click Tiny Mint for room, pause, location, and quit controls.
+- Right-click Tiny Mint or the tray icon for room, settings, location, pause, and quit controls.
 - Double-click the tray icon or press `Ctrl+Shift+M` to open his room.
+- Use Settings to toggle roaming, room visits and autonomy, cursor play, reduced motion, startup at login, and other preferences.
 - In the room, click any prop to have Tiny Mint use it.
 - The room's debug panel is visible only in development mode.
+
+Master pause stops autonomous simulation decisions while keeping windows and manual controls responsive. Reduced motion is visual-only: the app preference or the operating-system preference freezes sprite animation, but does not set or pause the creature's simulation.
+
+Packaged Windows builds manage sign-in startup through Electron's login-item settings. Development builds retain the preference for the packaged app and log that OS startup registration is not applied; this does not prevent the app from running.
 
 ## V3 art integration
 

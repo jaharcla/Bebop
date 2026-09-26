@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { Activity, CreatureState, Location, RoomPropId } from "../shared/types";
+import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../shared/types";
 
 contextBridge.exposeInMainWorld("tinyMint", {
   isDevelopment: Boolean(process.env.VITE_DEV_SERVER_URL),
@@ -16,9 +16,10 @@ contextBridge.exposeInMainWorld("tinyMint", {
   setClickThrough: (ignore: boolean) => ipcRenderer.send("pointer:click-through", ignore),
   openMenu: () => ipcRenderer.send("menu:open"),
   openRoom: () => ipcRenderer.send("room:open"),
+  openSettings: () => ipcRenderer.send("settings:open"),
   setLocation: (location: Location) => ipcRenderer.send("state:location", location),
   setActivity: (activity: Activity) => ipcRenderer.send("state:activity", activity),
   useRoomProp: (prop: RoomPropId) => ipcRenderer.send("room:use-prop", prop),
-  setPaused: (paused: boolean) => ipcRenderer.send("state:paused", paused),
+  updatePreferences: (preferences: Partial<CreaturePreferences>) => ipcRenderer.send("preferences:update", preferences),
   reset: () => ipcRenderer.send("state:reset")
 });

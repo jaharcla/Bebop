@@ -55,6 +55,7 @@ const propsRoot = required<HTMLElement>("#props");
 
 const animator = new SpriteAnimator(canvas);
 if (!window.tinyMint.isDevelopment) debug.hidden = true;
+const systemMotionPreference = matchMedia("(prefers-reduced-motion: reduce)");
 
 const propButtons = new Map<RoomPropId, HTMLButtonElement>();
 
@@ -97,9 +98,13 @@ function anchorFor(id: RoomPropId): { x: number; y: number } {
 
 function render(state: CreatureState): void {
   const isHome = state.location === "room";
+  document.documentElement.classList.toggle(
+    "reduced-motion",
+    state.preferences.reducedMotion || systemMotionPreference.matches
+  );
   creature.hidden = !isHome;
   send.textContent = isHome ? "Send Tiny Mint outside" : "Call Tiny Mint home";
-  animator.setPaused(state.preferences.paused || state.preferences.reducedMotion);
+  animator.setPaused(state.preferences.paused || state.preferences.reducedMotion || systemMotionPreference.matches);
   animator.setAnimation(state.currentAnimation);
 
   for (const [id, button] of propButtons) button.dataset.selected = String(isHome && id === state.room.target);
@@ -137,3 +142,6 @@ document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) =
 
 window.tinyMint.onState(render);
 void window.tinyMint.getState().then(render);
+systemMotionPreference.addEventListener("change", () => {
+  void window.tinyMint.getState().then(render);
+});

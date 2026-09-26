@@ -34,6 +34,7 @@ button { font: inherit; color: inherit; }
 .debug-actions button { border: 1px solid #9fb7a2; border-radius: 6px; background: #eaf4e5; cursor: pointer; }
 @keyframes quiet-sway { 0%,100% { transform: translate(-50%, -100%) rotate(-1deg); } 50% { transform: translate(-50%, -100%) rotate(1deg); } }
 @keyframes tiny-hop { 0%,100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 7px)); } }
+:root.reduced-motion #room-creature { transition: none; animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   #room-creature { transition: none; animation: none !important; }
 }

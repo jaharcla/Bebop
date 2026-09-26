@@ -1,0 +1,24 @@
+:root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #294b43;
+  background: #edf2e9;
+  font-synthesis: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 380px; }
+#settings { max-width: 520px; margin: 0 auto; padding: 24px 28px 18px; }
+header { margin-bottom: 20px; }
+.eyebrow { margin: 0; color: #658070; font-size: 11px; letter-spacing: 1.7px; text-transform: uppercase; }
+h1 { margin: 4px 0; font-size: 28px; letter-spacing: -0.8px; }
+.intro { margin: 0; color: #617669; font-size: 13px; }
+section { margin-top: 16px; }
+h2 { margin: 0 0 6px; color: #557361; font-size: 12px; letter-spacing: 1.1px; text-transform: uppercase; }
+.setting-row { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 18px; padding: 8px 0; border-bottom: 1px solid #d9e2d4; cursor: pointer; }
+.setting-row:last-child { border-bottom: 0; }
+.setting-row span { display: grid; gap: 3px; }
+.setting-row strong { font-size: 13px; font-weight: 600; }
+.setting-row small { color: #687b6f; font-size: 11px; line-height: 1.35; }
+.setting-row input { flex: 0 0 auto; width: 38px; height: 21px; margin: 0 2px 0 0; accent-color: #628d72; cursor: pointer; }
+.setting-row input:focus-visible { outline: 3px solid #608f91; outline-offset: 3px; }
+.status { min-height: 15px; margin: 8px 0 0; color: #617669; font-size: 11px; }
+.status[data-error="true"] { color: #9a3e35; }

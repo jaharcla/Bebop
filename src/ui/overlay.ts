@@ -6,8 +6,7 @@ const canvas = document.querySelector<HTMLCanvasElement>("#mint");
 if (!canvas) throw new Error("Tiny Mint canvas is missing.");
 
 const animator = new SpriteAnimator(canvas);
-const systemReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-if (systemReducedMotion) window.tinyMint.setPaused(true);
+const systemMotionPreference = matchMedia("(prefers-reduced-motion: reduce)");
 let state: CreatureState | undefined;
 let pointer: { x: number; y: number } | undefined;
 let dragging = false;
@@ -24,7 +23,7 @@ function clearTransientTimer(): void {
 
 function applyAnimation(): void {
   if (!state || transient) return;
-  animator.setPaused(state.preferences.paused || state.preferences.reducedMotion);
+  animator.setPaused(state.preferences.paused || state.preferences.reducedMotion || systemMotionPreference.matches);
   if (pointer && state.preferences.cursorInteraction && !state.preferences.paused && !["tap", "happy"].includes(state.currentAnimation)) {
     const dx = pointer.x - 96;
     const dy = pointer.y - 80;
@@ -110,10 +109,12 @@ window.tinyMint.onState((next) => {
   applyAnimation();
 });
 void window.tinyMint.getState().then((next) => { state = next; applyAnimation(); });
+systemMotionPreference.addEventListener("change", applyAnimation);
 
 function scheduleBlink(): void {
   window.setTimeout(() => {
-    if (state?.currentAnimation === "idle" && !pointer && !state.preferences.paused && !dragging && !transient) {
+    const motionReduced = state?.preferences.reducedMotion || systemMotionPreference.matches;
+    if (!motionReduced && state?.currentAnimation === "idle" && !pointer && !state.preferences.paused && !dragging && !transient) {
       transient = true;
       animator.setAnimation("blink", true);
       window.setTimeout(() => {

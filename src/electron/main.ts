@@ -1,17 +1,19 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, Tray } from "electron";
+import type { MenuItem } from "electron";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { CreatureBrain } from "../creature/brain/CreatureBrain";
 import { StateStore } from "../persistence/StateStore";
-import type { Activity, CreatureState, Location, RoomPropId } from "../shared/types";
+import type { Activity, CreaturePreferences, CreatureState, Location, RoomPropId } from "../shared/types";
 
 const OVERLAY_SIZE = 192;
 let overlayWindow: BrowserWindow | null = null;
 let roomWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let trayPauseItem: MenuItem | undefined;
 let brain: CreatureBrain;
 let store: StateStore;
-let currentState: CreatureState;
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
 let dragOrigin: { pointerX: number; pointerY: number; windowX: number; windowY: number } | null = null;
@@ -22,11 +24,11 @@ const devUrl = process.env.VITE_DEV_SERVER_URL;
 const smokeUserData = process.env.TINY_MINT_SMOKE_USER_DATA;
 if (smokeUserData) app.setPath("userData", smokeUserData);
 
-function rendererPath(page: "index.html" | "room.html"): string {
+function rendererPath(page: "index.html" | "room.html" | "settings.html"): string {
   return devUrl ? `${devUrl}/${page}` : join(app.getAppPath(), "dist", page);
 }
 
-async function loadRenderer(window: BrowserWindow, page: "index.html" | "room.html"): Promise<void> {
+async function loadRenderer(window: BrowserWindow, page: "index.html" | "room.html" | "settings.html"): Promise<void> {
   if (devUrl) await window.loadURL(rendererPath(page));
   else await window.loadFile(rendererPath(page));
 }
@@ -40,8 +42,9 @@ function clampPosition(x: number, y: number): { x: number; y: number } {
   };
 }
 
-function createOverlay(): void {
-  const position = clampPosition(currentState.position.x, currentState.position.y);
+function createOverlay(state: CreatureState): void {
+  const position = clampPosition(state.position.x, state.position.y);
+  brain.setPosition(position.x, position.y, { notify: false });
   overlayWindow = new BrowserWindow({
     width: OVERLAY_SIZE,
     height: OVERLAY_SIZE,
@@ -52,14 +55,14 @@ function createOverlay(): void {
     resizable: false,
     hasShadow: false,
     skipTaskbar: true,
-    alwaysOnTop: currentState.preferences.alwaysOnTop,
+    alwaysOnTop: state.preferences.alwaysOnTop,
     backgroundColor: "#00000000",
     webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false }
   });
-  overlayWindow.setAlwaysOnTop(currentState.preferences.alwaysOnTop, "floating");
+  overlayWindow.setAlwaysOnTop(state.preferences.alwaysOnTop, "floating");
   overlayWindow.on("closed", () => { overlayWindow = null; });
   void loadRenderer(overlayWindow, "index.html");
-  if (currentState.location === "room") overlayWindow.hide();
+  if (state.location === "room") overlayWindow.hide();
 }
 
 function openRoom(): void {
@@ -80,6 +83,29 @@ function openRoom(): void {
   roomWindow.setMenuBarVisibility(false);
   roomWindow.on("closed", () => { roomWindow = null; });
   void loadRenderer(roomWindow, "room.html");
+  roomWindow.show();
+  roomWindow.focus();
+}
+
+function openSettings(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+  settingsWindow = new BrowserWindow({
+    width: 460,
+    height: 690,
+    minWidth: 400,
+    minHeight: 600,
+    resizable: false,
+    title: "Tiny Mint Settings",
+    backgroundColor: "#edf2e9",
+    webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false }
+  });
+  settingsWindow.setMenuBarVisibility(false);
+  settingsWindow.on("closed", () => { settingsWindow = null; });
+  void loadRenderer(settingsWindow, "settings.html");
 }
 
 function sendToRoom(): void {
@@ -93,14 +119,15 @@ function sendToRoom(): void {
 }
 
 function broadcast(state: CreatureState): void {
-  currentState = state;
   for (const window of [overlayWindow, roomWindow]) {
     if (window && !window.isDestroyed()) window.webContents.send("state:changed", state);
   }
+  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send("state:changed", state);
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if (state.location === "desktop") overlayWindow.showInactive();
     else overlayWindow.hide();
   }
+  if (trayPauseItem) trayPauseItem.label = state.preferences.paused ? "Resume" : "Pause";
   updateMovement(state);
   scheduleSave();
 }
@@ -108,16 +135,20 @@ function broadcast(state: CreatureState): void {
 function scheduleSave(): void {
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
-    store.save(currentState);
+    store.save(brain.snapshot());
     saveTimer = undefined;
   }, 2_500);
 }
 
 function updateMovement(state: CreatureState): void {
-  const shouldMove = state.location === "desktop" && state.currentActivity === "wander" && !state.preferences.paused && !dragOrigin;
+  const shouldMove = state.location === "desktop" && state.currentActivity === "wander" && state.preferences.roamingEnabled && !state.preferences.paused && !dragOrigin;
   if (!shouldMove && movementTimer) {
     clearInterval(movementTimer);
     movementTimer = undefined;
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      const [x, y] = overlayWindow.getPosition();
+      brain.setPosition(x, y, { notify: false });
+    }
   }
   if (shouldMove && !movementTimer) {
     movementTimer = setInterval(() => {
@@ -126,18 +157,20 @@ function updateMovement(state: CreatureState): void {
       const proposed = clampPosition(x + wanderDirection * 3, y);
       if (proposed.x === x) wanderDirection *= -1;
       overlayWindow.setPosition(proposed.x, proposed.y);
-      currentState.position = proposed;
+      brain.setPosition(proposed.x, proposed.y, { notify: false });
     }, 80);
   }
 }
 
 function showCreatureMenu(): void {
+  const state = brain.snapshot();
   Menu.buildFromTemplate([
     { label: "Open Tiny Mint's room", click: openRoom },
+    { label: "Settings", click: openSettings },
     { type: "separator" },
-    { label: "Send to room", enabled: currentState.location !== "room", click: sendToRoom },
-    { label: "Call to desktop", enabled: currentState.location !== "desktop", click: () => brain.setLocation("desktop") },
-    { label: currentState.preferences.paused ? "Resume" : "Pause", click: () => brain.patchPreferences({ paused: !currentState.preferences.paused }) },
+    { label: "Send to room", enabled: state.location !== "room", click: sendToRoom },
+    { label: "Call to desktop", enabled: state.location !== "desktop", click: () => brain.setLocation("desktop") },
+    { label: state.preferences.paused ? "Resume" : "Pause", click: () => brain.patchPreferences({ paused: !state.preferences.paused }) },
     { type: "separator" },
     { label: "Quit Tiny Mint", click: () => app.quit() }
   ]).popup({ window: overlayWindow ?? undefined });
@@ -148,44 +181,128 @@ function createTray(): void {
   const icon = nativeImage.createFromPath(atlasPath).crop({ x: 0, y: 0, width: 96, height: 96 }).resize({ width: 24, height: 24 });
   tray = new Tray(icon);
   tray.setToolTip("Tiny Mint");
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const menu = Menu.buildFromTemplate([
     { label: "Open room", click: openRoom },
+    { label: "Settings", click: openSettings },
     { label: "Call to desktop", click: () => brain.setLocation("desktop") },
     { label: "Send to room", click: sendToRoom },
     { type: "separator" },
+    { label: "Pause", click: () => brain.patchPreferences({ paused: !brain.snapshot().preferences.paused }) },
+    { type: "separator" },
     { label: "Quit", click: () => app.quit() }
-  ]));
+  ]);
+  trayPauseItem = menu.items.find((item) => item.label === "Pause");
+  tray.setContextMenu(menu);
   tray.on("double-click", openRoom);
+}
+
+function isApplicationWindow(sender: Electron.WebContents): boolean {
+  return [overlayWindow, roomWindow, settingsWindow].some((window) => window?.webContents === sender);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const preferenceKeys: readonly (keyof CreaturePreferences)[] = [
+  "alwaysOnTop",
+  "cursorInteraction",
+  "paused",
+  "reducedMotion",
+  "roamingEnabled",
+  "roomVisitsEnabled",
+  "roomAutonomyEnabled",
+  "interactionsEnabled",
+  "startWithWindows"
+];
+
+function isPreferencePatch(value: unknown): value is Partial<CreaturePreferences> {
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length > 0 && entries.every(([key, preference]) =>
+    preferenceKeys.includes(key as keyof CreaturePreferences) && typeof preference === "boolean"
+  );
+}
+
+function applyStartupPreference(enabled: boolean): void {
+  if (process.platform !== "win32") return;
+  if (!app.isPackaged) {
+    if (enabled) console.warn("Windows login startup is only configured for packaged builds; the preference was saved for later.");
+    return;
+  }
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+      args: []
+    });
+    if (app.getLoginItemSettings().openAtLogin !== enabled) {
+      console.warn(`Windows login startup did not accept the requested setting (${enabled}) in this build.`);
+    }
+  } catch (error) {
+    console.warn("Could not update Windows login startup settings.", error);
+  }
 }
 
 function registerIpc(): void {
   ipcMain.handle("state:get", () => brain.snapshot());
-  ipcMain.on("creature:click", () => brain.interact("click"));
-  ipcMain.on("room:open", openRoom);
-  ipcMain.on("menu:open", showCreatureMenu);
-  ipcMain.on("state:location", (_event, location: Location) => brain.setLocation(location));
-  ipcMain.on("state:activity", (_event, activity: Activity) => brain.setActivity(activity));
-  ipcMain.on("room:use-prop", (_event, prop: RoomPropId) => brain.useRoomProp(prop));
-  ipcMain.on("state:paused", (_event, paused: boolean) => brain.patchPreferences({ paused }));
-  ipcMain.on("state:reset", () => brain.reset());
-  ipcMain.on("drag:start", (_event, point: { screenX: number; screenY: number }) => {
+  ipcMain.on("creature:click", (event) => { if (isApplicationWindow(event.sender)) brain.interact("click"); });
+  ipcMain.on("room:open", (event) => { if (isApplicationWindow(event.sender)) openRoom(); });
+  ipcMain.on("settings:open", (event) => { if (isApplicationWindow(event.sender)) openSettings(); });
+  ipcMain.on("menu:open", (event) => { if (isApplicationWindow(event.sender)) showCreatureMenu(); });
+  ipcMain.on("state:location", (event, location: unknown) => {
+    if (!isApplicationWindow(event.sender)) return;
+    if (location === "desktop" || location === "room") brain.setLocation(location as Location);
+    else console.warn("Ignored invalid location update from renderer.", location);
+  });
+  ipcMain.on("state:activity", (event, activity: unknown) => {
+    if (!isApplicationWindow(event.sender)) return;
+    const activities: readonly Activity[] = ["idle", "wander", "observe", "rest", "sit", "sleep", "draw", "read", "exercise", "carry", "inspect", "play", "music", "show", "visitRoom", "visitDesktop"];
+    if (typeof activity === "string" && activities.includes(activity as Activity)) brain.setActivity(activity as Activity);
+    else console.warn("Ignored invalid activity update from renderer.", activity);
+  });
+  ipcMain.on("room:use-prop", (event, prop: unknown) => {
+    if (!isApplicationWindow(event.sender)) return;
+    const props: readonly RoomPropId[] = ["door", "corkboard", "bookshelf", "plant", "bed", "chair", "desk", "music-player", "toy-box", "rug", "cushion", "ball", "dumbbell", "sketchbook", "book", "watering-can"];
+    if (typeof prop === "string" && props.includes(prop as RoomPropId)) brain.useRoomProp(prop as RoomPropId);
+    else console.warn("Ignored invalid room prop update from renderer.", prop);
+  });
+  ipcMain.on("preferences:update", (event, preferences: unknown) => {
+    if (!isApplicationWindow(event.sender)) return;
+    if (!isPreferencePatch(preferences)) {
+      console.warn("Ignored invalid preference update from renderer.", preferences);
+      return;
+    }
+    if (Object.hasOwn(preferences, "startWithWindows")) applyStartupPreference(preferences.startWithWindows!);
+    if (Object.hasOwn(preferences, "alwaysOnTop")) {
+      overlayWindow?.setAlwaysOnTop(preferences.alwaysOnTop!, "floating");
+    }
+    brain.patchPreferences(preferences);
+  });
+  ipcMain.on("state:reset", (event) => { if (isApplicationWindow(event.sender)) brain.reset(); });
+  ipcMain.on("drag:start", (event, point: unknown) => {
+    if (!isApplicationWindow(event.sender) || !isRecord(point) || typeof point.screenX !== "number" || typeof point.screenY !== "number" || !Number.isFinite(point.screenX) || !Number.isFinite(point.screenY)) return;
     if (!overlayWindow) return;
     const [windowX, windowY] = overlayWindow.getPosition();
     dragOrigin = { pointerX: point.screenX, pointerY: point.screenY, windowX, windowY };
+    updateMovement(brain.snapshot());
   });
-  ipcMain.on("drag:move", (_event, point: { screenX: number; screenY: number }) => {
+  ipcMain.on("drag:move", (event, point: unknown) => {
+    if (!isApplicationWindow(event.sender) || !isRecord(point) || typeof point.screenX !== "number" || typeof point.screenY !== "number" || !Number.isFinite(point.screenX) || !Number.isFinite(point.screenY)) return;
     if (!overlayWindow || !dragOrigin) return;
     const position = clampPosition(dragOrigin.windowX + point.screenX - dragOrigin.pointerX, dragOrigin.windowY + point.screenY - dragOrigin.pointerY);
     overlayWindow.setPosition(position.x, position.y);
   });
-  ipcMain.on("drag:end", (_event, moved: boolean) => {
+  ipcMain.on("drag:end", (event, moved: unknown) => {
+    if (!isApplicationWindow(event.sender) || typeof moved !== "boolean") return;
     if (!overlayWindow || !dragOrigin) return;
     dragOrigin = null;
     const [x, y] = overlayWindow.getPosition();
-    brain.updatePosition(x, y);
+    brain.setPosition(x, y, { userInteraction: true });
     if (moved) brain.interact("drag");
   });
-  ipcMain.on("pointer:click-through", (_event, ignore: boolean) => {
+  ipcMain.on("pointer:click-through", (event, ignore: unknown) => {
+    if (!isApplicationWindow(event.sender) || typeof ignore !== "boolean") return;
     overlayWindow?.setIgnoreMouseEvents(ignore, { forward: true });
   });
 }
@@ -205,6 +322,114 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   mkdirSync(outputDirectory, { recursive: true });
   writeFileSync(join(outputDirectory, "overlay.png"), (await overlayWindow.capturePage()).toPNG());
 
+  openSettings();
+  const settings = settingsWindow;
+  if (!settings) throw new Error("Settings did not open.");
+  const settingsControlCount = await settings.webContents.executeJavaScript(
+    "document.querySelectorAll('input[data-preference]').length"
+  ) as number;
+  if (settingsControlCount !== 9) throw new Error(`Expected 9 settings controls; found ${settingsControlCount}.`);
+  const setCheckbox = async (key: keyof CreaturePreferences, checked: boolean): Promise<void> => {
+    await settings.webContents.executeJavaScript(`
+      (() => {
+        const input = document.querySelector('[data-preference="${key}"]');
+        input.checked = ${checked};
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()
+    `);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  };
+  await settings.webContents.executeJavaScript(`
+    (() => {
+      const reducedMotion = document.querySelector('[data-preference="reducedMotion"]');
+      reducedMotion.checked = true;
+      reducedMotion.dispatchEvent(new Event('change', { bubbles: true }));
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  if (!brain.snapshot().preferences.reducedMotion || brain.snapshot().preferences.paused) {
+    throw new Error("Reduced motion changed the master pause state or failed to update.");
+  }
+  await setCheckbox("reducedMotion", false);
+
+  let startupSettingRoundTrip: boolean | "unsupported" = "unsupported";
+  let originalStartupSetting: boolean | undefined;
+  if (process.platform === "win32" && app.isPackaged) {
+    try {
+      originalStartupSetting = app.getLoginItemSettings().openAtLogin;
+    } catch (error) {
+      console.warn("Could not inspect Windows login settings during smoke.", error);
+    }
+  }
+  if (typeof originalStartupSetting === "boolean") {
+    const savedStartupPreference = brain.snapshot().preferences.startWithWindows;
+    try {
+      await setCheckbox("startWithWindows", !originalStartupSetting);
+      const updatedStartupSetting = app.getLoginItemSettings().openAtLogin;
+      if (updatedStartupSetting !== !originalStartupSetting) {
+        throw new Error(`Windows login setting did not update (requested=${!originalStartupSetting}, actual=${updatedStartupSetting}).`);
+      }
+      startupSettingRoundTrip = true;
+    } finally {
+      await setCheckbox("startWithWindows", savedStartupPreference);
+      applyStartupPreference(originalStartupSetting);
+      if (app.getLoginItemSettings().openAtLogin !== originalStartupSetting) {
+        throw new Error("Could not restore the original Windows login setting after smoke.");
+      }
+    }
+  } else if (process.platform === "win32") {
+    const savedStartupPreference = brain.snapshot().preferences.startWithWindows;
+    await setCheckbox("startWithWindows", !savedStartupPreference);
+    if (brain.snapshot().preferences.startWithWindows === savedStartupPreference) {
+      throw new Error("Start with Windows preference did not update in the development build.");
+    }
+    await setCheckbox("startWithWindows", savedStartupPreference);
+  }
+
+  const startPosition = overlayWindow.getPosition();
+  await settings.webContents.executeJavaScript(`
+    (() => {
+      const roaming = document.querySelector('[data-preference="roamingEnabled"]');
+      roaming.checked = false;
+      roaming.dispatchEvent(new Event('change', { bubbles: true }));
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  brain.setActivity("wander");
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  if (brain.snapshot().preferences.roamingEnabled || overlayWindow.getPosition()[0] !== startPosition[0]) {
+    throw new Error("Turning roaming off did not keep Tiny Mint in place.");
+  }
+  await setCheckbox("cursorInteraction", false);
+  await overlayWindow.webContents.executeJavaScript("window.tinyMint.click()");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  if (brain.snapshot().preferences.cursorInteraction || brain.snapshot().currentAnimation !== "tap") {
+    throw new Error("Clicking Tiny Mint failed when cursor reactions were disabled.");
+  }
+  const dragStartPosition = overlayWindow.getPosition();
+  await overlayWindow.webContents.executeJavaScript(`
+    (() => {
+      window.tinyMint.startDrag(${dragStartPosition[0] + 96}, ${dragStartPosition[1] + 96});
+      window.tinyMint.drag(${dragStartPosition[0] + 124}, ${dragStartPosition[1] + 96});
+      window.tinyMint.endDrag(true);
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const dragEndPosition = overlayWindow.getPosition();
+  if (dragEndPosition[0] !== dragStartPosition[0] + 28 || brain.snapshot().position.x !== dragEndPosition[0]) {
+    throw new Error("Dragging did not move the overlay and synchronize Brain position.");
+  }
+
+  await setCheckbox("roamingEnabled", true);
+  brain.setActivity("wander");
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  if (overlayWindow.getPosition()[0] === dragEndPosition[0]) {
+    throw new Error("Turning roaming on did not resume desktop movement.");
+  }
+
+  await setCheckbox("roomVisitsEnabled", false);
+  await setCheckbox("roomAutonomyEnabled", false);
+  await setCheckbox("paused", true);
   sendToRoom();
   const room = roomWindow;
   if (!room) throw new Error("Sending Tiny Mint to his room did not open the room window.");
@@ -234,10 +459,15 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     })()
   `) as { creatureVisible: boolean; loadedProps: number; totalProps: number };
   if (!room.isVisible() || brain.snapshot().location !== "room") {
-    throw new Error("Sending Tiny Mint to his room did not show the room in the room location.");
+    throw new Error(`Sending Tiny Mint to his room did not show the room in the room location (visible=${room.isVisible()}, location=${brain.snapshot().location}).`);
   }
   if (!roomRender.creatureVisible || roomRender.loadedProps !== 16 || roomRender.totalProps !== 16) {
     throw new Error(`Room v3 rendering failed: ${JSON.stringify(roomRender)}`);
+  }
+  await room.webContents.executeJavaScript(`document.querySelector('[data-prop="desk"]').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  if (brain.snapshot().currentActivity !== "draw" || brain.snapshot().room.target !== "desk") {
+    throw new Error("Manual room prop interaction failed with room autonomy disabled.");
   }
   const roomImage = await room.capturePage();
   if (roomImage.isEmpty()) throw new Error("Room window did not produce a rendered frame.");
@@ -249,6 +479,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   const stateContinuesWithRoomClosed = brain.snapshot().location === "room" && brain.snapshot().currentActivity === "rest";
   if (!stateContinuesWithRoomClosed) throw new Error("Creature state did not persist after the room window closed.");
   brain.setLocation("desktop");
+  await setCheckbox("paused", false);
   await new Promise((resolve) => setTimeout(resolve, 150));
   const overlayVisibleOnDesktop = overlayWindow.isVisible();
   if (!overlayVisibleOnDesktop) throw new Error("Desktop overlay did not reappear after returning from the room.");
@@ -257,16 +488,24 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   if (persisted.schemaVersion !== 1 || persisted.location !== "desktop") {
     throw new Error("Returned desktop state was not persisted correctly.");
   }
+  const overlayBounds = overlayWindow.getBounds();
+  if (persisted.position.x !== overlayBounds.x || persisted.position.y !== overlayBounds.y) {
+    throw new Error(`Persisted position does not match the visible overlay (saved=${JSON.stringify(persisted.position)}, bounds=${JSON.stringify(overlayBounds)}).`);
+  }
   const report = {
     overlayPixels,
     roomVisibleOnSend: true,
     roomCreaturePixels: roomRender.creatureVisible,
     loadedRoomProps: roomRender.loadedProps,
+    settingsControlCount,
+    reducedMotionIndependentOfPause: !brain.snapshot().preferences.paused,
+    startupSettingRoundTrip,
     overlayHiddenInRoom,
     stateContinuesWithRoomClosed,
     overlayVisibleOnDesktop,
     persistedSchemaVersion: persisted.schemaVersion,
-    overlayBounds: overlayWindow.getBounds()
+    persistedPosition: persisted.position,
+    overlayBounds
   };
   writeFileSync(join(outputDirectory, "report.json"), JSON.stringify(report, null, 2));
   console.log(`TINY_MINT_SMOKE ${JSON.stringify(report)}`);
@@ -275,14 +514,17 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
 
 app.whenReady().then(() => {
   store = new StateStore(join(app.getPath("userData"), "creature-state.json"));
-  currentState = store.load();
-  brain = new CreatureBrain(currentState);
+  const initialState = store.load();
+  brain = new CreatureBrain(initialState);
   registerIpc();
-  createOverlay();
+  createOverlay(initialState);
   createTray();
   brain.subscribe(broadcast);
   brain.start();
   globalShortcut.register("CommandOrControl+Shift+M", openRoom);
+  if (!process.env.TINY_MINT_SMOKE_OUTPUT && !process.env.TINY_MINT_SMOKE_USER_DATA) {
+    applyStartupPreference(brain.snapshot().preferences.startWithWindows);
+  }
   if (process.env.TINY_MINT_SMOKE_OUTPUT) {
     void runSmokeTest(process.env.TINY_MINT_SMOKE_OUTPUT).catch((error) => {
       console.error("TINY_MINT_SMOKE_FAILED", error);
@@ -296,6 +538,6 @@ app.on("before-quit", () => {
   brain?.stop();
   if (saveTimer) clearTimeout(saveTimer);
   if (movementTimer) clearInterval(movementTimer);
-  if (currentState && store) store.save(currentState);
+  if (brain && store) store.save(brain.snapshot());
 });
 app.on("will-quit", () => globalShortcut.unregisterAll());

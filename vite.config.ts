@@ -7,7 +7,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         overlay: resolve(__dirname, "index.html"),
-        room: resolve(__dirname, "room.html")
+        room: resolve(__dirname, "room.html"),
+        settings: resolve(__dirname, "settings.html")
       }
     }
   }

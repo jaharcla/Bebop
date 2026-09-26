@@ -22,7 +22,12 @@ export const defaultState = (): CreatureState => ({
     alwaysOnTop: true,
     cursorInteraction: true,
     paused: false,
-    reducedMotion: false
+    reducedMotion: false,
+    roamingEnabled: true,
+    roomVisitsEnabled: true,
+    roomAutonomyEnabled: true,
+    interactionsEnabled: true,
+    startWithWindows: false
   },
   privacy: { awarenessEnabled: false, contextLevel: "minimal" },
   personality: {
