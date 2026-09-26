@@ -1,0 +1,39 @@
+:root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #244946;
+  background: #edf2e9;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; min-width: 620px; min-height: 460px; overflow: hidden; }
+button { font: inherit; color: inherit; }
+#room { position: relative; width: 100vw; height: 100vh; background: #edf2e9; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+#scene { position: relative; width: min(100%, calc((100vh - 62px) * 1.6)); aspect-ratio: 8 / 5; max-height: calc(100vh - 62px); margin: auto; overflow: hidden; background: #f8efd9; image-rendering: pixelated; }
+.wall { position: absolute; inset: 0 0 47.5% 0; background: #f8efd9; }
+.floor { position: absolute; inset: 52.5% 0 0; background: #dce6ca; background-image: repeating-linear-gradient(0deg, transparent 0 59px, #a9bd8f26 60px); }
+.baseboard { position: absolute; left: 0; right: 0; top: 52.15%; height: 0.8%; min-height: 3px; background: #a8be9d; }
+#props { position: absolute; inset: 0; }
+.room-prop { position: absolute; padding: 0; margin: 0; border: 0; background: transparent; transform: translate(-50%, -50%); cursor: pointer; image-rendering: pixelated; outline: none; }
+.room-prop img { display: block; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+.room-prop:hover::after, .room-prop:focus-visible::after { content: attr(aria-label); position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -4px); padding: 4px 7px; border: 1px solid #9db39a; border-radius: 8px; background: #fff8e8ed; color: #355b52; font-size: 11px; white-space: nowrap; z-index: 2000; }
+.room-prop:focus-visible { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 4px #f8efd9); }
+.room-prop[data-selected="true"] { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 5px #8cc3a4); }
+#room-creature { position: absolute; width: 12.5%; aspect-ratio: 1; transform: translate(-50%, -100%); transition: left 650ms ease, top 650ms ease; pointer-events: none; z-index: 1000; }
+#room-creature.walking { transition-duration: 750ms; }
+#room-creature.music { animation: quiet-sway 1.4s ease-in-out infinite; }
+#room-creature.play { animation: tiny-hop .8s ease-in-out infinite; }
+#mint { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+#room-bar { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 16px; border-top: 1px solid #cbd8c5; background: #f7f9f2; }
+#activity { margin: 0; font-size: 13px; color: #536e63; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#send { flex: 0 0 auto; padding: 8px 12px; border: 1px solid #b9ccb8; border-radius: 10px; background: #fffaf0; cursor: pointer; }
+#send:hover { background: #e5f1dd; }
+#send:focus-visible { outline: 3px solid #608f91; outline-offset: 2px; }
+#debug { position: absolute; right: 12px; top: 12px; width: 260px; max-height: calc(100vh - 86px); overflow: auto; padding: 8px 10px; border: 1px solid #9fb7a2; border-radius: 10px; background: #fffffff0; font-size: 12px; z-index: 3000; }
+#debug[hidden] { display: none; }
+#state { white-space: pre-wrap; }
+.debug-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.debug-actions button { border: 1px solid #9fb7a2; border-radius: 6px; background: #eaf4e5; cursor: pointer; }
+@keyframes quiet-sway { 0%,100% { transform: translate(-50%, -100%) rotate(-1deg); } 50% { transform: translate(-50%, -100%) rotate(1deg); } }
+@keyframes tiny-hop { 0%,100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 7px)); } }
+@media (prefers-reduced-motion: reduce) {
+  #room-creature { transition: none; animation: none !important; }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "tiny-mint",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small autonomous desktop creature for Windows.",
+  "main": "dist-electron/electron/main.js",
+  "scripts": {
+    "dev": "npm run build:main && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "build:main": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:main && vite build",
+    "start": "electron .",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^44.4.5",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0",
+    "vitest": "^5.0.2",
+    "wait-on": "^8.0.0"
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "cellWidth": 160,
+  "cellHeight": 160,
+  "props": [
+    {
+      "name": "bed",
+      "image": "props/bed.png"
+    },
+    {
+      "name": "desk",
+      "image": "props/desk.png"
+    },
+    {
+      "name": "chair",
+      "image": "props/chair.png"
+    },
+    {
+      "name": "bookshelf",
+      "image": "props/bookshelf.png"
+    },
+    {
+      "name": "rug",
+      "image": "props/rug.png"
+    },
+    {
+      "name": "plant",
+      "image": "props/plant.png"
+    },
+    {
+      "name": "toy-box",
+      "image": "props/toy-box.png"
+    },
+    {
+      "name": "ball",
+      "image": "props/ball.png"
+    },
+    {
+      "name": "dumbbell",
+      "image": "props/dumbbell.png"
+    },
+    {
+      "name": "music-player",
+      "image": "props/music-player.png"
+    },
+    {
+      "name": "sketchbook",
+      "image": "props/sketchbook.png"
+    },
+    {
+      "name": "book",
+      "image": "props/book.png"
+    },
+    {
+      "name": "door",
+      "image": "props/door.png"
+    },
+    {
+      "name": "cushion",
+      "image": "props/cushion.png"
+    },
+    {
+      "name": "corkboard",
+      "image": "props/corkboard.png"
+    },
+    {
+      "name": "watering-can",
+      "image": "props/watering-can.png"
+    }
+  ]
+}

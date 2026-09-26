@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tiny Mint's Room</title>
+  </head>
+  <body>
+    <main id="room">
+      <section id="scene" aria-label="Tiny Mint's room">
+        <div class="wall"></div>
+        <div class="floor"></div>
+        <div class="baseboard"></div>
+        <div id="props" aria-label="Things Tiny Mint can use"></div>
+        <section id="room-creature" aria-live="polite">
+          <canvas id="mint" width="120" height="120" aria-label="Tiny Mint"></canvas>
+        </section>
+      </section>
+      <footer id="room-bar">
+        <p id="activity">Away on the desktop</p>
+        <button id="send" type="button">Call Tiny Mint home</button>
+      </footer>
+      <details id="debug">
+        <summary>Creature state</summary>
+        <pre id="state"></pre>
+        <div class="debug-actions">
+          <button data-action="desktop">Send to desktop</button>
+          <button data-action="room">Send to room</button>
+          <button data-action="tap">Tap reaction</button>
+          <button data-action="reset">Reset state</button>
+        </div>
+      </details>
+    </main>
+    <script type="module" src="/src/ui/room.ts"></script>
+  </body>
+</html>

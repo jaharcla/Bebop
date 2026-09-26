@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-electron/
+artifacts/smoke/
+.vite/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
