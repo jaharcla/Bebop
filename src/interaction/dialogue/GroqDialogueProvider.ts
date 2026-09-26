@@ -4,18 +4,50 @@ import { buildDialogueMessages } from "./promptBuilder";
 import { validateUtterance } from "./responseValidation";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+const responseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["text", "quickResponses", "emotion", "endConversation"],
+  properties: {
+    text: { type: "string", minLength: 1, maxLength: 160 },
+    quickResponses: {
+      type: "array",
+      minItems: 0,
+      maxItems: 3,
+      items: { type: "string", minLength: 1, maxLength: 40 }
+    },
+    emotion: {
+      type: "string",
+      enum: ["neutral", "chill", "curious", "excited", "playful", "sleepy", "bored"]
+    },
+    endConversation: { type: "boolean" }
+  }
+} as const;
+
+export class GroqHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "GroqHttpError";
+  }
+}
 
 export class GroqDialogueProvider implements DialogueProvider {
   constructor(
     private readonly apiKey: string,
     private readonly model: string,
     private readonly fetcher: typeof fetch = fetch,
-    private readonly timeoutMs = 10_000
+    private readonly timeoutMs = DEFAULT_TIMEOUT_MS
   ) {}
 
-  async respond(request: DialogueRequest): Promise<CreatureUtterance> {
+  async respond(request: DialogueRequest, signal?: AbortSignal): Promise<CreatureUtterance> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const forwardAbort = () => controller.abort(signal?.reason);
+    if (signal?.aborted) controller.abort(signal.reason);
+    else signal?.addEventListener("abort", forwardAbort, { once: true });
+
+    const timeout = setTimeout(() => controller.abort(new Error("Groq request timed out.")), this.timeoutMs);
     try {
       const response = await this.fetcher(GROQ_ENDPOINT, {
         method: "POST",
@@ -26,13 +58,27 @@ export class GroqDialogueProvider implements DialogueProvider {
         body: JSON.stringify({
           model: this.model,
           messages: buildDialogueMessages(request),
-          response_format: { type: "json_object" },
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "tiny_mint_utterance",
+              strict: true,
+              schema: responseSchema
+            }
+          },
+          reasoning_effort: "low",
+          include_reasoning: false,
           temperature: 0.8,
-          max_tokens: 180
+          max_completion_tokens: 256,
+          stream: false
         }),
         signal: controller.signal
       });
-      if (!response.ok) throw new Error(`Groq request failed with HTTP ${response.status}.`);
+
+      if (!response.ok) {
+        throw new GroqHttpError(response.status, `Groq request failed with HTTP ${response.status}.`);
+      }
+
       const payload: unknown = await response.json();
       const content = getMessageContent(payload);
       let parsed: unknown;
@@ -44,6 +90,7 @@ export class GroqDialogueProvider implements DialogueProvider {
       return validateUtterance(parsed);
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", forwardAbort);
     }
   }
 }
@@ -62,18 +109,26 @@ function getMessageContent(payload: unknown): string {
 }
 
 export class FallbackDialogueProvider implements DialogueProvider {
+  private preferredDisabled = false;
+
   constructor(
     private readonly preferred: DialogueProvider,
     private readonly fallback: DialogueProvider,
     private readonly reportFailure: (error: unknown) => void = () => undefined
   ) {}
 
-  async respond(request: DialogueRequest): Promise<CreatureUtterance> {
+  async respond(request: DialogueRequest, signal?: AbortSignal): Promise<CreatureUtterance> {
+    if (this.preferredDisabled) return this.fallback.respond(request, signal);
+
     try {
-      return await this.preferred.respond(request);
+      return await this.preferred.respond(request, signal);
     } catch (error) {
+      if (signal?.aborted) throw error;
+      if (error instanceof GroqHttpError && (error.status === 401 || error.status === 403)) {
+        this.preferredDisabled = true;
+      }
       this.reportFailure(error);
-      return this.fallback.respond(request);
+      return this.fallback.respond(request, signal);
     }
   }
 }
