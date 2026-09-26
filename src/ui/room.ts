@@ -19,6 +19,7 @@ import rugUrl from "../../assets/sprites/props/rug.png?url";
 import sketchbookUrl from "../../assets/sprites/props/sketchbook.png?url";
 import toyBoxUrl from "../../assets/sprites/props/toy-box.png?url";
 import wateringCanUrl from "../../assets/sprites/props/watering-can.png?url";
+import bongStripUrl from "../../assets/sprites/v3-source/bonus/bong/bong-strip-384x96.png?url";
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -42,7 +43,8 @@ const propImages: Record<RoomPropId, string> = {
   rug: rugUrl,
   sketchbook: sketchbookUrl,
   "toy-box": toyBoxUrl,
-  "watering-can": wateringCanUrl
+  "watering-can": wateringCanUrl,
+  bong: bongStripUrl
 };
 
 const canvas = required<HTMLCanvasElement>("#mint");
@@ -54,6 +56,7 @@ const debug = required<HTMLDetailsElement>("#debug");
 const stateView = required<HTMLPreElement>("#state");
 const propsRoot = required<HTMLElement>("#props");
 const sketchesRoot = required<HTMLElement>("#corkboard-sketches");
+const qaStatus = required<HTMLParagraphElement>("#qa-status");
 
 const animator = new SpriteAnimator(canvas);
 if (!window.tinyMint.isDevelopment) debug.hidden = true;
@@ -87,11 +90,21 @@ for (const prop of roomProps) {
   button.style.height = `${(prop.h / 600) * 100}%`;
   button.style.zIndex = String(20 + Math.round(prop.y));
 
-  const image = document.createElement("img");
-  image.src = propImages[prop.id];
-  image.alt = "";
-  image.draggable = false;
-  button.append(image);
+  if (prop.id === "bong") {
+    button.classList.add("bong-prop");
+    button.style.setProperty("--bong-strip", `url("${bongStripUrl}")`);
+    button.setAttribute("aria-label", "Animated bonus sprite preview");
+    const art = document.createElement("span");
+    art.className = "bong-art";
+    art.setAttribute("aria-hidden", "true");
+    button.append(art);
+  } else {
+    const image = document.createElement("img");
+    image.src = propImages[prop.id];
+    image.alt = "";
+    image.draggable = false;
+    button.append(image);
+  }
   button.addEventListener("click", () => window.tinyMint.useRoomProp(prop.id));
   propsRoot.append(button);
   propButtons.set(prop.id, button);
@@ -112,6 +125,9 @@ function render(state: CreatureState): void {
   for (const [id, button] of propButtons) {
     button.dataset.selected = String(isHome && id === state.room.target);
     button.dataset.carried = String(id === state.room.carriedItem);
+    if (id === "bong") {
+      button.dataset.active = String(isHome && state.room.target === "bong" && state.currentActivity === "inspect" && state.room.intention !== null);
+    }
   }
 
   if (isHome) {
@@ -141,6 +157,7 @@ function render(state: CreatureState): void {
   }));
 
   stateView.textContent = JSON.stringify(state, null, 2);
+  qaStatus.textContent = `Basic Awareness: ${state.privacy.awarenessEnabled ? "on" : "off"}. Presence QA override: real system signal.`;
 }
 
 send.addEventListener("click", async () => {
@@ -154,6 +171,33 @@ document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) =
     if (action === "desktop" || action === "room") window.tinyMint.setLocation(action);
     else if (action === "tap") window.tinyMint.click();
     else if (action === "reset") window.tinyMint.reset();
+  });
+});
+
+required<HTMLButtonElement>("#qa-check-in").addEventListener("click", async () => {
+  qaStatus.textContent = "Starting a local autonomous check-in…";
+  try {
+    const started = await window.tinyMint.qaAutonomousCheckIn();
+    qaStatus.textContent = started
+      ? "Autonomous check-in started with the configured local/provider dialogue."
+      : "Check-in not started. Enable interactions, turn off Quiet mode, resume Tiny Mint, and enable Basic Awareness if simulating away.";
+  } catch (error) {
+    qaStatus.textContent = `QA check-in failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+});
+
+document.querySelectorAll<HTMLButtonElement>("[data-qa-presence]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const value = button.dataset.qaPresence;
+    const present = value === "active" ? true : value === "away" ? false : null;
+    try {
+      const current = await window.tinyMint.qaSetUserPresence(present);
+      qaStatus.textContent = current === null
+        ? "Enable Basic Awareness in Settings before simulating presence."
+        : `Simulated local presence: ${current ? "active" : "away"}.`;
+    } catch (error) {
+      qaStatus.textContent = `Presence QA failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
   });
 });
 

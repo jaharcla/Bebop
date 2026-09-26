@@ -9,7 +9,7 @@ const expectedAnimations = [
 
 const expectedProps = [
   "door", "corkboard", "bookshelf", "plant", "bed", "chair", "desk", "music-player",
-  "toy-box", "rug", "cushion", "ball", "dumbbell", "sketchbook", "book", "watering-can"
+  "toy-box", "rug", "cushion", "ball", "dumbbell", "sketchbook", "book", "watering-can", "bong"
 ] as const;
 
 describe("v3 asset catalog", () => {
@@ -29,5 +29,10 @@ describe("v3 asset catalog", () => {
     expect(animations.sleep.loopFrom).toBe(2);
     expect(animations.held.loopFrom).toBe(1);
     expect(animations.carry.loopFrom).toBe(1);
+  });
+
+  it("keeps reach animations as explicit once-hold sequences for room activities", () => {
+    expect(animations["reach-left"].mode).toBe("once-hold");
+    expect(animations["reach-right"].mode).toBe("once-hold");
   });
 });

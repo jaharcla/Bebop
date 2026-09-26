@@ -20,6 +20,23 @@ describe("StateStore", () => {
     expect(JSON.parse(readFileSync(file, "utf8")).schemaVersion).toBe(4);
   });
 
+  it("round trips Basic Awareness and the manually selected bonus prop", () => {
+    const directory = mkdtempSync(join(tmpdir(), "tiny-mint-awareness-"));
+    directories.push(directory);
+    const file = join(directory, "state.json");
+    const store = new StateStore(file);
+    store.save({
+      ...defaultState(),
+      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      room: { ...defaultState().room, target: "bong" }
+    });
+
+    expect(store.load()).toMatchObject({
+      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      room: { target: "bong" }
+    });
+  });
+
   it("recovers from corrupt data", () => {
     const directory = mkdtempSync(join(tmpdir(), "tiny-mint-"));
     directories.push(directory);

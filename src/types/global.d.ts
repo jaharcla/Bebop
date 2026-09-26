@@ -15,6 +15,9 @@ declare global {
       isDevelopment: boolean;
       getState(): Promise<CreatureState>;
       exportState(): Promise<boolean>;
+      setAwarenessEnabled(enabled: boolean): Promise<CreatureState | null>;
+      qaAutonomousCheckIn(): Promise<boolean>;
+      qaSetUserPresence(present: boolean | null): Promise<boolean | null>;
       getDialogueStatus(): Promise<DialogueSettingsStatus | null>;
       saveGroqKey(value: string): Promise<DialogueActionResult>;
       clearGroqKey(): Promise<DialogueActionResult>;

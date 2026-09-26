@@ -17,6 +17,8 @@ const clearKey = required<HTMLButtonElement>("#clear-key");
 const testConnection = required<HTMLButtonElement>("#test-connection");
 const exportState = required<HTMLButtonElement>("#export-state");
 const exportMessage = required<HTMLParagraphElement>("#export-message");
+const awarenessInput = required<HTMLInputElement>("#basic-awareness");
+const awarenessMessage = required<HTMLParagraphElement>("#awareness-message");
 
 function renderDialogue(value: DialogueSettingsStatus): void {
   dialogueStatus.textContent = value.provider;
@@ -103,6 +105,7 @@ const defaultPreferences: CreaturePreferences = {
 
 function render(state: CreatureState): void {
   for (const input of inputs) input.checked = state.preferences[preferenceKey(input)];
+  awarenessInput.checked = state.privacy.awarenessEnabled;
 }
 
 for (const input of inputs) {
@@ -114,6 +117,26 @@ for (const input of inputs) {
 }
 
 window.tinyMint.onState(render);
+awarenessInput.addEventListener("change", async () => {
+  awarenessInput.disabled = true;
+  awarenessMessage.dataset.error = "false";
+  awarenessMessage.textContent = "";
+  try {
+    const updated = await window.tinyMint.setAwarenessEnabled(awarenessInput.checked);
+    if (!updated) throw new Error("Basic Awareness could not be updated.");
+    render(updated);
+    awarenessMessage.textContent = updated.privacy.awarenessEnabled
+      ? "Basic Awareness is on. Local system idle time stays on this device."
+      : "Basic Awareness is off.";
+  } catch (error) {
+    awarenessMessage.dataset.error = "true";
+    awarenessMessage.textContent = error instanceof Error ? error.message : String(error);
+    void window.tinyMint.getState().then(render);
+  } finally {
+    awarenessInput.disabled = false;
+  }
+});
+
 void window.tinyMint.getState().then(render).catch((error: unknown) => {
   status.dataset.error = "true";
   status.textContent = `Couldn't load settings: ${error instanceof Error ? error.message : String(error)}`;

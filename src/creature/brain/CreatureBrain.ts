@@ -114,6 +114,12 @@ export class CreatureBrain {
     this.publish();
   }
 
+  setAwarenessEnabled(enabled: boolean): void {
+    if (this.state.privacy.awarenessEnabled === enabled) return;
+    this.state.privacy = { ...this.state.privacy, awarenessEnabled: enabled };
+    this.publish();
+  }
+
   useRoomProp(id: RoomPropId): void {
     if (this.state.location !== "room") this.enterRoom();
     this.state.lastUserInteraction = Date.now();

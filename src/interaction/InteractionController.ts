@@ -50,6 +50,7 @@ export class InteractionController {
   private notBefore: number;
   private engaged = false;
   private disposed = false;
+  private userPresent = true;
   private activeReplyController: AbortController | undefined;
 
   constructor(private readonly options: InteractionControllerOptions) {
@@ -64,6 +65,33 @@ export class InteractionController {
     this.previousState = this.options.getState();
     const startupGrace = (5 + this.random() * 5) * 60_000;
     this.scheduleLongQuiet(startupGrace);
+  }
+
+  setUserPresent(present: boolean): void {
+    if (this.userPresent === present || this.disposed) return;
+    this.userPresent = present;
+    if (!present) {
+      if (this.initiationTimer) clearTimeout(this.initiationTimer);
+      this.initiationTimer = undefined;
+      if (this.session?.origin === "creature" && !this.engaged) this.closeSession();
+      return;
+    }
+
+    if (this.pendingTrigger) this.scheduleInitiation();
+    else if (!this.session) this.scheduleLongQuiet(2 * 60_000 + this.random() * 2 * 60_000);
+  }
+
+  isUserPresent(): boolean {
+    return this.userPresent;
+  }
+
+  async startAutonomousCheckInForQA(): Promise<boolean> {
+    const state = this.options.getState();
+    if (this.disposed || this.session || !state.preferences.interactionsEnabled || state.preferences.quietMode
+      || state.preferences.paused || !this.userPresent) return false;
+    if (state.location !== "desktop") this.options.brain.setLocation("desktop");
+    await this.openSession("creature", "LONG_QUIET_PERIOD", true);
+    return this.getSession()?.origin === "creature";
   }
 
   observeState(state: CreatureState): void {
@@ -163,6 +191,11 @@ export class InteractionController {
     if (this.session || this.disposed) return;
     const state = this.options.getState();
     if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop") return;
+    if (!this.userPresent) {
+      this.pendingTrigger = trigger;
+      this.scheduleLongQuiet(5 * 60_000);
+      return;
+    }
     this.pendingTrigger = trigger;
     this.scheduleInitiation();
   }
@@ -176,6 +209,7 @@ export class InteractionController {
       this.pendingTrigger = null;
       return;
     }
+    if (!this.userPresent) return;
     const eligibleAt = nextAllowedInitiationAt({
       state,
       now: this.now(),
@@ -193,7 +227,8 @@ export class InteractionController {
         hasActiveSession: this.session !== null,
         now: this.now(),
         notBefore: this.notBefore,
-        ignoredStreak: this.ignoredStreak
+        ignoredStreak: this.ignoredStreak,
+        userPresent: this.userPresent
       })) {
         if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode && !currentState.preferences.paused && currentState.location === "desktop") {
           this.pendingTrigger = trigger;
@@ -215,19 +250,23 @@ export class InteractionController {
     }, delay);
   }
 
-  private async openSession(origin: "creature" | "user", trigger: InteractionTrigger): Promise<void> {
+  private async openSession(origin: "creature" | "user", trigger: InteractionTrigger, forceForQA = false): Promise<void> {
     if (this.session || this.disposed) return;
     if (origin === "creature") {
-      const allowed = shouldInitiateInteraction({
-        state: this.options.getState(),
+      const currentState = this.options.getState();
+      const allowed = currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode
+        && !currentState.preferences.paused && currentState.location === "desktop" && this.userPresent
+        && (forceForQA || shouldInitiateInteraction({
+        state: currentState,
         trigger,
         hasActiveSession: false,
         now: this.now(),
         notBefore: this.notBefore,
-        ignoredStreak: this.ignoredStreak
-      });
+        ignoredStreak: this.ignoredStreak,
+        userPresent: this.userPresent
+      }));
       if (!allowed) return;
-      this.notBefore = this.now() + nextCreatureSpeechDelayMs(this.ignoredStreak, this.random, this.options.getState());
+      if (!forceForQA) this.notBefore = this.now() + nextCreatureSpeechDelayMs(this.ignoredStreak, this.random, currentState);
       if (this.longQuietTimer) clearTimeout(this.longQuietTimer);
       this.longQuietTimer = undefined;
     }

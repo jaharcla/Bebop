@@ -112,6 +112,25 @@ describe("CreatureBrain", () => {
     expect(brain.snapshot().currentAnimation).toBe("walk");
   });
 
+  it("allows the bonus bong art only as a manually requested room inspection", () => {
+    const brain = new CreatureBrain(defaultState(), () => 0.5);
+    brain.patchPreferences({ roomAutonomyEnabled: false });
+    brain.setLocation("room");
+    brain.useRoomProp("bong");
+
+    expect(brain.snapshot()).toMatchObject({
+      location: "room",
+      currentActivity: "wander",
+      room: { target: "bong", intention: "inspect the animated bonus art" }
+    });
+  });
+
+  it("persists the opt-in Basic Awareness setting", () => {
+    const brain = new CreatureBrain(defaultState(), () => 0.5);
+    brain.setAwarenessEnabled(true);
+    expect(brain.snapshot().privacy).toEqual({ awarenessEnabled: true, contextLevel: "minimal" });
+  });
+
   it("keeps manual room plans usable while paused but stops autonomous plans", () => {
     vi.useFakeTimers();
     const manual = new CreatureBrain(defaultState(), () => 0.5);

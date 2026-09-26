@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { CreatureBrain } from "../creature/brain/CreatureBrain";
 import { loadDevelopmentEnvironment } from "./developmentEnvironment";
 import { InteractionController } from "../interaction/InteractionController";
+import { isUserPresentFromSystemIdle } from "../interaction/basicAwareness";
 import { createDialogueProvider as selectDialogueProvider } from "../interaction/dialogue/createDialogueProvider";
 import type { DialogueProvider } from "../interaction/dialogue/DialogueProvider";
 import { LocalDialogueProvider } from "../interaction/dialogue/LocalDialogueProvider";
@@ -42,12 +43,15 @@ let speechWindowSize = { ...SPEECH_WINDOW_MIN_SIZE };
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
 let cursorTimer: NodeJS.Timeout | undefined;
+let awarenessTimer: NodeJS.Timeout | undefined;
+let qaPresenceOverride: boolean | null = null;
 let displayChangedHandler: (() => void) | undefined;
 let suspendHandler: (() => void) | undefined;
 let resumeHandler: (() => void) | undefined;
 let dragOrigin: { pointerX: number; pointerY: number; windowX: number; windowY: number } | null = null;
 let desktopGoal: { x: number; y: number; kind: "wander" | "cursor" | "exit" | "enter" } | null = null;
 let cursorPoint: Electron.Point | null = null;
+let previousCursorPoint: Electron.Point | null = null;
 let lastBroadcastLocation: Location | undefined;
 
 const preloadPath = join(__dirname, "preload.js");
@@ -402,7 +406,10 @@ function updateMovement(state: CreatureState): void {
       if (!overlayWindow || overlayWindow.isDestroyed()) return;
       const [x, y] = overlayWindow.getPosition();
       const current = brain.snapshot();
+      const staleCursorGoal = current.currentActivity === "observe" && desktopGoal?.kind === "cursor"
+        && (!current.preferences.cursorInteraction || !cursorPoint);
       if (!desktopGoal || (current.currentActivity === "observe" && desktopGoal.kind !== "cursor")
+        || staleCursorGoal
         || (current.currentActivity === "visitRoom" && desktopGoal.kind !== "exit")) {
         desktopGoal = chooseDesktopGoal(current);
       }
@@ -422,6 +429,32 @@ function updateMovement(state: CreatureState): void {
       positionSpeechWindow();
     }, 80);
   }
+}
+
+function sampleSystemAwareness(): void {
+  if (!brain || !interactionController || !brain.snapshot().privacy.awarenessEnabled) return;
+  if (qaPresenceOverride !== null) {
+    interactionController.setUserPresent(qaPresenceOverride);
+    return;
+  }
+  try {
+    interactionController.setUserPresent(isUserPresentFromSystemIdle(powerMonitor.getSystemIdleTime()));
+  } catch (error) {
+    console.warn("Could not read local system idle time for Basic Awareness.", error);
+  }
+}
+
+function refreshSystemAwareness(): void {
+  if (!brain || !interactionController) return;
+  if (!brain.snapshot().privacy.awarenessEnabled) {
+    if (awarenessTimer) clearInterval(awarenessTimer);
+    awarenessTimer = undefined;
+    qaPresenceOverride = null;
+    interactionController.setUserPresent(true);
+    return;
+  }
+  sampleSystemAwareness();
+  if (!awarenessTimer) awarenessTimer = setInterval(sampleSystemAwareness, 15_000);
 }
 
 function chooseDesktopGoal(state: CreatureState): { x: number; y: number; kind: "wander" | "cursor" | "exit" | "enter" } {
@@ -573,6 +606,24 @@ function registerIpc(): void {
     }
     return true;
   });
+  ipcMain.handle("privacy:awareness", (event, enabled: unknown) => {
+    if (settingsWindow?.webContents !== event.sender || typeof enabled !== "boolean") return null;
+    brain.setAwarenessEnabled(enabled);
+    refreshSystemAwareness();
+    return brain.snapshot();
+  });
+  ipcMain.handle("qa:autonomous-check-in", async (event) => {
+    if (!devUrl || roomWindow?.webContents !== event.sender) return false;
+    return interactionController.startAutonomousCheckInForQA();
+  });
+  ipcMain.handle("qa:user-presence", (event, present: unknown) => {
+    if (!devUrl || roomWindow?.webContents !== event.sender
+      || (present !== null && typeof present !== "boolean")) return null;
+    if (!brain.snapshot().privacy.awarenessEnabled) return null;
+    qaPresenceOverride = present;
+    sampleSystemAwareness();
+    return interactionController.isUserPresent();
+  });
   ipcMain.handle("interaction:get", (event) => isSpeechWindow(event.sender) ? interactionController.getSession() : null);
   ipcMain.handle("dialogue:status", (event) => isApplicationWindow(event.sender) ? dialogueSettingsStatus() : null);
   ipcMain.handle("dialogue:save-key", (event, value: unknown): DialogueActionResult => {
@@ -634,7 +685,7 @@ function registerIpc(): void {
   });
   ipcMain.on("room:use-prop", (event, prop: unknown) => {
     if (!isApplicationWindow(event.sender)) return;
-    const props: readonly RoomPropId[] = ["door", "corkboard", "bookshelf", "plant", "bed", "chair", "desk", "music-player", "toy-box", "rug", "cushion", "ball", "dumbbell", "sketchbook", "book", "watering-can"];
+    const props: readonly RoomPropId[] = ["door", "corkboard", "bookshelf", "plant", "bed", "chair", "desk", "music-player", "toy-box", "rug", "cushion", "ball", "dumbbell", "sketchbook", "book", "watering-can", "bong"];
     if (typeof prop === "string" && props.includes(prop as RoomPropId)) brain.useRoomProp(prop as RoomPropId);
     else console.warn("Ignored invalid room prop update from renderer.", prop);
   });
@@ -748,6 +799,11 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     "document.querySelectorAll('input[data-preference]').length"
   ) as number;
   if (settingsControlCount !== 10) throw new Error(`Expected 10 settings controls; found ${settingsControlCount}.`);
+  const awarenessEnabledState = await settings.webContents.executeJavaScript("window.tinyMint.setAwarenessEnabled(true)") as CreatureState | null;
+  const awarenessDisabledState = await settings.webContents.executeJavaScript("window.tinyMint.setAwarenessEnabled(false)") as CreatureState | null;
+  const basicAwarenessRoundTrip = awarenessEnabledState?.privacy.awarenessEnabled === true
+    && awarenessDisabledState?.privacy.awarenessEnabled === false;
+  if (!basicAwarenessRoundTrip) throw new Error("Basic Awareness did not round-trip through the Settings IPC.");
   const providerDeadline = Date.now() + 2_000;
   let dialogueProvider = "";
   while (dialogueProvider !== "Local voice" && Date.now() < providerDeadline) {
@@ -1110,7 +1166,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     (async () => {
       const canvas = document.querySelector('#mint');
       const creature = document.querySelector('#room-creature');
-      const props = Array.from(document.querySelectorAll('#props img'));
+      const props = Array.from(document.querySelectorAll('#props .room-prop'));
       if (!canvas || !creature) throw new Error('Room creature elements are missing.');
       let spritePixels = false;
       const deadline = Date.now() + 3000;
@@ -1126,7 +1182,13 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
         }
         if (!spritePixels) await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      return { creatureVisible: !creature.hidden && spritePixels, loadedProps: props.filter((image) => image.complete && image.naturalWidth > 0).length, totalProps: props.length };
+      const loadedProps = props.filter((button) => {
+        const image = button.querySelector('img');
+        const bonusArt = button.querySelector('.bong-art');
+        return Boolean((image && image.complete && image.naturalWidth > 0)
+          || (bonusArt && getComputedStyle(bonusArt).backgroundImage !== 'none'));
+      }).length;
+      return { creatureVisible: !creature.hidden && spritePixels, loadedProps, totalProps: props.length };
     })()
   `) as Promise<{ creatureVisible: boolean; loadedProps: number; totalProps: number }>,
     new Promise<never>((_resolve, reject) => {
@@ -1138,7 +1200,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   if (!room.isVisible() || brain.snapshot().location !== "room") {
     throw new Error(`Sending Tiny Mint to his room did not show the room in the room location (visible=${room.isVisible()}, location=${brain.snapshot().location}).`);
   }
-  if (!roomRender.creatureVisible || roomRender.loadedProps !== 16 || roomRender.totalProps !== 16) {
+  if (!roomRender.creatureVisible || roomRender.loadedProps !== 17 || roomRender.totalProps !== 17) {
     throw new Error(`Room v3 rendering failed: ${JSON.stringify(roomRender)}`);
   }
   await room.webContents.executeJavaScript(`document.querySelector('[data-prop="desk"]').click()`);
@@ -1196,13 +1258,16 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   if (brain.snapshot().room.carriedItem !== null) throw new Error("Play routine did not return the ball.");
   await room.webContents.executeJavaScript(`document.querySelector('[data-prop="bookshelf"]').click()`);
   const bookReachDeadline = Date.now() + 8_000;
-  while (!(brain.snapshot().room.target === "bookshelf" && brain.snapshot().currentAnimation === "reach-right")
-    && Date.now() < bookReachDeadline) {
+  let shelfReachCorrect = false;
+  while (Date.now() < bookReachDeadline) {
+    const snapshot = brain.snapshot();
+    if (snapshot.room.target === "bookshelf" && snapshot.facing === "right"
+      && snapshot.currentAnimation === "reach-right") {
+      shelfReachCorrect = true;
+      break;
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  const shelfReachCorrect = brain.snapshot().room.target === "bookshelf"
-    && brain.snapshot().facing === "right"
-    && brain.snapshot().currentAnimation === "reach-right";
   if (!shelfReachCorrect) throw new Error("Book routine did not face and reach toward the bookshelf.");
   const carryDeadline = Date.now() + 7_000;
   while (brain.snapshot().room.carriedItem !== "book" && Date.now() < carryDeadline) {
@@ -1274,6 +1339,21 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 150));
   const overlayVisibleOnDesktop = overlayWindow.isVisible();
   if (!overlayVisibleOnDesktop) throw new Error("Desktop overlay did not reappear after returning from the room.");
+  await setCheckbox("quietMode", false);
+  await setCheckbox("interactionsEnabled", true);
+  const autonomousSpeechStarted = await interactionController.startAutonomousCheckInForQA();
+  const autonomousSpeechDeadline = Date.now() + 5_000;
+  while ((!speechWindow?.isVisible() || interactionController.getSession()?.waitingForResponse) && Date.now() < autonomousSpeechDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const autonomousSpeechVisible = autonomousSpeechStarted
+    && interactionController.getSession()?.origin === "creature"
+    && interactionController.getSession()?.waitingForResponse === false
+    && speechWindow?.isVisible() === true;
+  if (!autonomousSpeechVisible) throw new Error("The QA autonomous check-in did not produce a visible creature-origin speech bubble.");
+  interactionController.dismiss();
+  await setCheckbox("interactionsEnabled", false);
+  await setCheckbox("quietMode", true);
   store.save(brain.snapshot());
   const persisted = store.load();
   if (persisted.schemaVersion !== 4 || persisted.location !== "desktop") {
@@ -1289,6 +1369,8 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     roomCreaturePixels: roomRender.creatureVisible,
     loadedRoomProps: roomRender.loadedProps,
     settingsControlCount,
+    basicAwarenessRoundTrip,
+    autonomousSpeechVisible,
     dialogueProvider,
     secureKeyEncrypted: true,
     secureKeyRendererRedacted: true,
@@ -1354,9 +1436,15 @@ app.whenReady().then(() => {
   interactionController.start();
   brain.subscribe(broadcast);
   brain.start();
+  refreshSystemAwareness();
   const updateCursor = () => {
     const state = brain.snapshot();
+    previousCursorPoint = cursorPoint;
     cursorPoint = state.preferences.cursorInteraction && state.location === "desktop" ? screen.getCursorScreenPoint() : null;
+    if (cursorPoint && previousCursorPoint && state.currentActivity === "observe"
+      && Math.hypot(cursorPoint.x - previousCursorPoint.x, cursorPoint.y - previousCursorPoint.y) >= 48) {
+      desktopGoal = null;
+    }
   };
   cursorTimer = setInterval(updateCursor, 600);
   displayChangedHandler = () => { reclampCreature(); positionSpeechWindow(); };
@@ -1365,13 +1453,16 @@ app.whenReady().then(() => {
     if (movementTimer) clearInterval(movementTimer);
     movementTimer = undefined;
     if (cursorTimer) clearInterval(cursorTimer);
+    if (awarenessTimer) clearInterval(awarenessTimer);
     cursorTimer = undefined;
+    awarenessTimer = undefined;
   };
   resumeHandler = () => {
     brain.resume();
     reclampCreature();
     updateCursor();
     cursorTimer = setInterval(updateCursor, 600);
+    refreshSystemAwareness();
     updateMovement(brain.snapshot());
   };
   screen.on("display-metrics-changed", displayChangedHandler);

@@ -27,11 +27,13 @@ The animation engine supports:
 
 Desktop dragging uses `held` while Tiny Mint is picked up and `land` on release. The room renderer uses the real v3 prop PNGs and chooses sit/sleep/draw/read/exercise/carry/reach/tap animations according to the selected object.
 
+Desktop cursor reactions are renderer-owned transient layers. Their timeout resolves against the latest Creature Brain animation, so a reach or landing restores the current walk/carry/idle state instead of globally shortening `once-hold` room animations.
+
 ## Room
 
 The room renderer is a lightweight DOM scene using the same 960×600 coordinate system as the v3 room prototype. Prop positions and interaction anchors are defined in `src/creature/room/roomProps.ts`. The visual assets themselves are bundled through Vite from `assets/sprites/props/`.
 
-The room remains a view onto persistent creature state; it is not the simulation owner. Completed art plans may pin a local motif on the corkboard; six are retained and rotate as new sketches arrive. When the room window closes, the brain continues selecting room activities and targets.
+The room remains a view onto persistent creature state; it is not the simulation owner. Completed art plans may pin a local motif on the corkboard; six are retained and rotate as new sketches arrive. The optional supplied bong strip is a manually selected animated bonus-art preview; it is not part of the mascot atlas or autonomous behavior. When the room window closes, the brain continues selecting room activities and targets.
 
 ## Persistence and events
 
@@ -39,4 +41,4 @@ The room remains a view onto persistent creature state; it is not the simulation
 
 ## Future boundaries
 
-The focused private alpha has optional Groq dialogue, quiet mode, and deterministic noncommittal local replies. Screen/activity awareness and reliable fullscreen-app detection remain absent. Dialogue providers cannot own the creature lifecycle.
+The focused private alpha has optional Groq dialogue, quiet mode, deterministic noncommittal local replies, and opt-in Basic Awareness based only on local OS idle time. The idle signal gates creature-initiated check-ins and is neither sent to providers nor persisted. Screen/cross-app awareness and reliable fullscreen-app detection remain absent. Development-only room QA controls can trigger an autonomous check-in and simulate active/away presence. Dialogue providers cannot own the creature lifecycle.

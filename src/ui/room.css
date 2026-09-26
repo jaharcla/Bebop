@@ -21,6 +21,15 @@ button { font: inherit; color: inherit; }
 .room-prop:focus-visible { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 4px #f8efd9); }
 .room-prop[data-selected="true"] { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 5px #8cc3a4); }
 .room-prop[data-carried="true"] { visibility: hidden; }
+.room-prop.bong-prop { overflow: hidden; }
+.bong-art { position: absolute; inset: 0; display: block; background-image: var(--bong-strip); background-size: 400% 100%; background-position: 0 0; image-rendering: pixelated; }
+.bong-prop[data-active="true"] .bong-art { animation: bong-preview 2.95s steps(1, end) infinite; }
+@keyframes bong-preview {
+  0%, 22% { background-position: 0 0; }
+  22.01%, 39% { background-position: 33.333% 0; }
+  39.01%, 69% { background-position: 66.667% 0; }
+  69.01%, 100% { background-position: 100% 0; }
+}
 #room-creature { position: absolute; width: 12.5%; aspect-ratio: 1; transform: translate(-50%, -100%); transition: left 120ms linear, top 120ms linear; pointer-events: none; z-index: 1000; }
 #room-creature.music { animation: quiet-sway 1.4s ease-in-out infinite; }
 #room-creature.play { animation: tiny-hop .8s ease-in-out infinite; }
@@ -39,9 +48,12 @@ button { font: inherit; color: inherit; }
 #state { white-space: pre-wrap; }
 .debug-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .debug-actions button { border: 1px solid #9fb7a2; border-radius: 6px; background: #eaf4e5; cursor: pointer; }
+#qa-status { margin: 8px 0 0; color: #536e63; }
 @keyframes quiet-sway { 0%,100% { transform: translate(-50%, -100%) rotate(-1deg); } 50% { transform: translate(-50%, -100%) rotate(1deg); } }
 @keyframes tiny-hop { 0%,100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 7px)); } }
 :root.reduced-motion #room-creature { transition: none; animation: none !important; }
+:root.reduced-motion .bong-art { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   #room-creature { transition: none; animation: none !important; }
+  .bong-art { animation: none !important; }
 }

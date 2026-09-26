@@ -54,6 +54,7 @@ All finished prop PNGs are in `assets/sprites/props/`.
 | sketchbook | carry |
 | book | read |
 | watering-can | inspect/reach |
+| bong bonus art | manually triggered animated preview / inspect |
 
 The room placement and anchors are derived from the v3 room prototype's 960×600 scene coordinates.
 
@@ -63,4 +64,5 @@ The room placement and anchors are derived from the v3 room prototype's 960×600
 - `SpriteAnimator` no longer assumes four sequential frames for every animation.
 - `held` and `land` are local interaction animations on the desktop; they do not need to become long-lived Creature Brain states.
 - Some props intentionally reuse the nearest finished mascot animation because no dedicated v3 animation exists yet. In particular music uses `sit` plus a subtle sway, and plant/watering-can use reach/inspect.
+- The supplied `assets/sprites/v3-source/bonus/bong/bong-strip-384x96.png` is rendered as a separate manual-only room prop. It is not inserted into the v3 mascot atlas and is excluded from autonomous room behavior. Its frame preview uses the supplied timing metadata and stops under reduced motion.
 - Groq remains optional and separate from the sprite system. The current corkboard doodles are small local SVG motifs, not image-generation output. Notion, screen awareness, and relationship mechanics remain out of scope.

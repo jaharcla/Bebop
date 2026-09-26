@@ -35,7 +35,8 @@ export type RoomPropId =
   | "dumbbell"
   | "sketchbook"
   | "book"
-  | "watering-can";
+  | "watering-can"
+  | "bong";
 
 export type Activity =
   | "idle"

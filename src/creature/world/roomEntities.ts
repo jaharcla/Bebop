@@ -35,7 +35,8 @@ export const roomEntities: Readonly<Record<RoomPropId, WorldEntity>> = {
   dumbbell: { id: "dumbbell", approachPoints: [{ x: 790, y: 535 }], pickupable: false, affordances: [use("exercise", "exercise", "exercise", 9, [6_000, 12_000])] },
   sketchbook: { id: "sketchbook", approachPoints: [{ x: 390, y: 535 }], pickupable: true, affordances: [use("draw", "draw", "draw", 12, [8_000, 15_000]), use("carry", "carry", "carry", 8, [3_000, 6_000])] },
   book: { id: "book", approachPoints: [{ x: 165, y: 455 }], pickupable: true, affordances: [use("read", "read", "read", 12, [9_000, 18_000]), use("carry", "carry", "carry", 7, [3_000, 6_000])] },
-  "watering-can": { id: "watering-can", approachPoints: [{ x: 575, y: 535 }], pickupable: true, affordances: [use("water", "inspect", "reach-right", 11, [3_000, 6_000]), use("carry", "carry", "carry", 7, [3_000, 6_000])] }
+  "watering-can": { id: "watering-can", approachPoints: [{ x: 575, y: 535 }], pickupable: true, affordances: [use("water", "inspect", "reach-right", 11, [3_000, 6_000]), use("carry", "carry", "carry", 7, [3_000, 6_000])] },
+  bong: { id: "bong", approachPoints: [{ x: 334, y: 535 }], pickupable: false, affordances: [use("inspect", "inspect", "reach-right", 4, [2_500, 3_500])] }
 };
 
 export const approachPoint = (id: RoomPropId): WorldPosition => roomEntities[id].approachPoints[0];

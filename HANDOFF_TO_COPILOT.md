@@ -54,7 +54,7 @@ The v3 art pack has been promoted into the real Electron/TypeScript app.
 - Local dialogue works without configuration. In development, copy `.env.example` to `.env` and add `GROQ_API_KEY`; `GROQ_MODEL` defaults to `openai/gpt-oss-20b`. The main process alone reads the ignored `.env`; packaged apps do not bundle it. Requests use strict JSON Schema, qualitative runtime context, cancellation, validation, and local fallback; 401/403 credentials are latched for the runtime.
 - The last six conversation messages live in memory only. No screen awareness, keystroke, microphone, webcam, clipboard, or browser monitoring was added.
 - Speech placement is a pure tested calculation and follows overlay movement; active conversation discourages autonomous room transitions without pausing simulation.
-- The supplied bong pack is preserved only under `assets/sprites/v3-source/bonus/bong/`. It is not part of the production atlas or activity system.
+- The supplied bong pack remains outside the mascot atlas and is integrated as a manually triggered animated room-art preview; autonomous behavior never selects it.
 
 ## Living behavior and alpha reliability
 
@@ -65,6 +65,9 @@ The v3 art pack has been promoted into the real Electron/TypeScript app.
 - State schema 4 validates saved values, rotates a known-good backup, recovers from a corrupt primary, and exports creature state without credentials or conversations. Reset asks for native confirmation and does not touch the secure Groq key.
 - Quiet mode suppresses creature-initiated conversations; manual Talk and room interactions remain available. Offline replies to arbitrary user text are intentionally noncommittal.
 - Windows CI runs `npm ci`, typecheck, tests, and build. Electron smoke and full routine visual checks remain manual QA.
+- Optional Basic Awareness uses only local OS idle time, gates creature-initiated speech while away, defaults off, and is not persisted or sent to a provider.
+- Desktop reach/land reactions are renderer-owned transient animations that restore the latest underlying activity; room `once-hold` animations remain indefinite until an explicit state change.
+- Development room QA controls can trigger a cooldown-bypassing autonomous check-in and simulate active/away presence. Production builds omit those QA controls.
 
 ## Recommended next task
 

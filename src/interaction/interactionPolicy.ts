@@ -25,10 +25,12 @@ export interface InteractionPolicyInput {
   now: number;
   notBefore: number;
   ignoredStreak: number;
+  userPresent?: boolean;
 }
 
 export function shouldInitiateInteraction(input: InteractionPolicyInput): boolean {
   const { state, now } = input;
+  if (input.userPresent === false) return false;
   if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop" || input.hasActiveSession) return false;
   if (now < input.notBefore) return false;
   const cooldownIndex = input.ignoredStreak >= 3 ? 2 : input.ignoredStreak > 0 ? 1 : 0;

@@ -32,7 +32,12 @@
           <button data-action="room">Send to room</button>
           <button data-action="tap">Tap reaction</button>
           <button data-action="reset">Reset state</button>
+          <button id="qa-check-in" type="button">Start autonomous check-in</button>
+          <button data-qa-presence="active" type="button">Simulate active</button>
+          <button data-qa-presence="away" type="button">Simulate away</button>
+          <button data-qa-presence="system" type="button">Use system presence</button>
         </div>
+        <p id="qa-status" role="status" aria-live="polite"></p>
       </details>
     </main>
     <script type="module" src="/src/ui/room.ts"></script>
