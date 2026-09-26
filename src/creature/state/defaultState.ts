@@ -1,7 +1,7 @@
 import type { CreatureState } from "../../shared/types";
 
 export const defaultState = (): CreatureState => ({
-  schemaVersion: 4,
+  schemaVersion: 5,
   location: "desktop",
   currentActivity: "idle",
   currentAnimation: "idle",
@@ -16,6 +16,7 @@ export const defaultState = (): CreatureState => ({
   lastUserInteraction: Date.now(),
   lastCreatureInteraction: Date.now(),
   lastActivityChange: Date.now(),
+  lastBongUseAt: 0,
   position: { x: 80, y: 80 },
   facing: "right",
   corkboardSketches: [],
@@ -42,6 +43,7 @@ export const defaultState = (): CreatureState => ({
     quietMode: false
   },
   privacy: { awarenessEnabled: false, contextLevel: "minimal" },
+  onboarding: { introduced: false },
   personality: {
     curiosity: 0.76,
     creativity: 0.7,
