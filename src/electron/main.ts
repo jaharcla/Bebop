@@ -19,6 +19,7 @@ import type {
   Activity,
   CreaturePreferences,
   CreatureState,
+  DesktopAwarenessContext,
   DialogueActionResult,
   DialogueProviderStatus,
   DialogueSettingsStatus,
@@ -62,6 +63,7 @@ const desktopAwareness = new DesktopAwareness((context) => {
   sampleSystemAwareness();
 });
 let awarenessTimer: NodeJS.Timeout | undefined;
+let desktopAwarenessContext: DesktopAwarenessContext | null = null;
 let qaPresenceOverride: boolean | null = null;
 let displayChangedHandler: (() => void) | undefined;
 let suspendHandler: (() => void) | undefined;
@@ -438,7 +440,10 @@ function updateMovement(state: CreatureState): void {
         const completed = desktopGoal.kind;
         desktopGoal = null;
         if (completed === "exit") brain.setLocation("room");
-        else brain.setActivity("idle");
+        else if (completed === "cursor" && desktopAwarenessContext?.userPresent && !desktopAwarenessContext.fullscreen) {
+          const activity = desktopAwarenessContext.activity;
+          brain.setActivity(activity === "reading" ? "read" : activity === "media" ? "music" : ["coding","writing","drawing","chatting"].includes(activity) ? "sit" : "idle");
+        } else brain.setActivity("idle");
         return;
       }
       const proposed = clampPosition(x + dx / distance * 3, y + dy / distance * 3);
@@ -462,13 +467,24 @@ function sampleSystemAwareness(): void {
   const keyboardActive = privacy.keyboardAwarenessEnabled && foregroundContext?.keyboardActive === true;
   const typingChanged = keyboardBusy !== keyboardActive;
   keyboardBusy = keyboardActive;
-  interactionController.setUserBusy(keyboardActive);
-  interactionController.setUserPresent(present && !hidden);
   const activeApp = privacy.desktopAwarenessEnabled ? foregroundContext?.activeApp ?? null : null;
   const appChanged = !!activeApp && !!lastActiveApp && activeApp !== lastActiveApp;
   if (activeApp || !privacy.desktopAwarenessEnabled) lastActiveApp = activeApp;
-  brain.observeDesktopActivity(classifyApp(activeApp), keyboardActive);
+  const category = classifyApp(activeApp);
+  const activity: DesktopAwarenessContext["activity"] = category === "browser" ? "browsing"
+    : category === "creative" ? "drawing"
+      : category === "other" ? (present ? "unknown" : "idle")
+        : category;
+  const context = enabled
+    ? { activity, userPresent: present, fullscreen: hidden, sampledAt: Date.now() }
+    : null;
+  desktopAwarenessContext = context;
+  brain.setDesktopContext(context);
+  brain.observeDesktopActivity(category, keyboardActive);
   brain.observeEnvironment(!enabled || present ? "active" : idleSeconds >= 900 ? "long-idle" : "idle", appChanged, hidden);
+  interactionController.setUserBusy(keyboardActive);
+  interactionController.setUserPresent(present && !hidden);
+  interactionController.setAttentionSuppressed(hidden);
   if (keyboardActive || hidden) desktopControl.cancel();
   if (typingChanged) updateMovement(brain.snapshot());
   if (visibilityChanged) {
@@ -1451,7 +1467,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   await setCheckbox("quietMode", true);
   store.save(brain.snapshot());
   const persisted = store.load();
-  if (persisted.schemaVersion !== 4 || persisted.location !== "desktop") {
+  if (persisted.schemaVersion !== 5 || persisted.location !== "desktop") {
     throw new Error("Returned desktop state was not persisted correctly.");
   }
   const overlayBounds = overlayWindow.getBounds();

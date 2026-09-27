@@ -7,7 +7,7 @@ import { animationFor, chooseActivity, type RandomSource } from "../behavior/beh
 import { recordHabit } from "../behavior/habitModel";
 import { clampState, defaultState } from "../state/defaultState";
 import { facingTowardProp } from "../world/roomEntities";
-import type { Activity, CorkboardSketchKind, CreaturePreferences, CreatureState, FacingDirection, Location, RoomPropId, WorldPosition } from "../../shared/types";
+import type { Activity, CorkboardSketchKind, CreaturePreferences, CreatureState, DesktopAwarenessContext, FacingDirection, Location, RoomPropId, WorldPosition } from "../../shared/types";
 
 import type { AppCategory } from "../../interaction/appAwareness";
 
@@ -24,6 +24,7 @@ export class CreatureBrain {
   private keyboardActive = false;
   private environmentState: "active" | "idle" | "long-idle" = "active";
   private nextEnvironmentReactionAt = 0;
+  private desktopContext: DesktopAwarenessContext | null = null;
   private suspendedAt: number | undefined;
   private readonly planner: BehaviorPlanner;
   private readonly executor: ActionExecutor;
@@ -99,7 +100,22 @@ export class CreatureBrain {
 
   recordCreatureConversation(): void {
     this.state.lastCreatureInteraction = Date.now();
+    if (!this.state.onboarding.introduced) this.state.onboarding = { introduced: true };
     this.publish();
+  }
+
+  setDesktopContext(context: DesktopAwarenessContext | null): void {
+    const wasFullscreen = this.desktopContext?.fullscreen ?? false;
+    this.desktopContext = context ? { ...context } : null;
+    if (this.state.location !== "desktop") return;
+    if (context?.fullscreen && !wasFullscreen && ["wander", "observe"].includes(this.state.currentActivity)) {
+      this.state.currentActivity = "idle";
+      this.state.currentAnimation = "idle";
+      this.nextDecisionAt = Date.now() + 12_000;
+      this.publish();
+    } else if (!context?.fullscreen && wasFullscreen && !this.state.preferences.paused) {
+      this.nextDecisionAt = Date.now() + 2_000;
+    }
   }
 
   setPosition(x: number, y: number, options: { notify?: boolean; userInteraction?: boolean; preserveFacing?: boolean } = {}): void {
@@ -240,7 +256,7 @@ export class CreatureBrain {
         : !this.conversationActive && (this.appCategory === "coding" || this.appCategory === "writing") ? "read"
         : !this.conversationActive && this.appCategory === "media" ? "sit"
         : !this.conversationActive && this.appCategory === "creative" ? "draw"
-        : chooseActivity(this.state, this.random, this.conversationActive));
+        : chooseActivity(this.state, this.random, this.conversationActive, this.desktopContext));
     }
   }
 
@@ -343,6 +359,7 @@ export class CreatureBrain {
 
   private completePlan(plan: ActionPlan): void {
     this.state.habits = recordHabit(this.state.habits, plan.habitActivity, plan.habitProp);
+    if (plan.habitProp === "bong" || plan.habitActivity === "bong") this.state.lastBongUseAt = Date.now();
     if (plan.habitActivity === "draw" && this.random() < 0.65) {
       const now = Date.now();
       const recent = this.state.habits.recentProps;
@@ -399,6 +416,7 @@ export class CreatureBrain {
     else if (activity === "exercise") { this.state.energy -= 5; this.state.stimulation += 6; }
     else if (activity === "play") { this.state.boredom -= 9; this.state.stimulation += 8; }
     else if (activity === "music") { this.state.comfort += 4; this.state.stimulation += 3; }
+    else if (activity === "bong") { this.state.comfort += 3; this.state.boredom -= 3; this.state.stimulation += 1; }
     else if (activity === "inspect") this.state.curiosity -= 3;
     this.state = clampState(this.state);
   }

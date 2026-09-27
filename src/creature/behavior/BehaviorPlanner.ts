@@ -1,6 +1,6 @@
 import type { CreatureState } from "../../shared/types";
 import type { ActionPlan } from "../actions/ActionPlan";
-import { bongRoutine, artRoutine, bookRoutine, playRoutine, roomExitRoutine, simplePropRoutine, wateringRoutine } from "../actions/actionChains";
+import { artRoutine, bongRoutine, bookRoutine, playRoutine, roomExitRoutine, simplePropRoutine, wateringRoutine } from "../actions/actionChains";
 import type { RandomSource } from "./behaviorEngine";
 import { scoreRoomBehaviors, type RoomBehaviorKind } from "./behaviorScoring";
 

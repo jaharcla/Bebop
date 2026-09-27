@@ -3,14 +3,14 @@ import { dirname } from "node:path";
 import { defaultState } from "../creature/state/defaultState";
 import type { Activity, AnimationName, CorkboardSketch, CorkboardSketchKind, CreatureState, ImpulseKind, Location, Mood, RoomPropId } from "../shared/types";
 
-const activities: readonly Activity[] = ["idle", "wander", "observe", "rest", "sit", "sleep", "draw", "read", "exercise", "carry", "inspect", "play", "music", "show", "visitRoom", "visitDesktop"];
+const activities: readonly Activity[] = ["idle", "wander", "observe", "rest", "sit", "sleep", "draw", "read", "exercise", "carry", "inspect", "play", "music", "show", "visitRoom", "visitDesktop", "bong"];
 const animations: readonly AnimationName[] = ["idle", "walk", "blink", "happy", "look", "reach-right", "reach-left", "tap", "sit", "sleep", "draw", "read", "held", "land", "exercise", "carry"];
 const moods: readonly Mood[] = ["neutral", "chill", "curious", "excited", "playful", "sleepy", "bored"];
 const locations: readonly Location[] = ["desktop", "room"];
 const propIds: readonly RoomPropId[] = ["door", "corkboard", "bookshelf", "plant", "bed", "chair", "desk", "music-player", "toy-box", "rug", "cushion", "ball", "dumbbell", "sketchbook", "book", "watering-can", "bong"];
 const impulseKinds: readonly ImpulseKind[] = ["create", "explore", "play", "rest", "seek-company", "seek-solitude"];
 const sketchKinds: readonly CorkboardSketchKind[] = ["plant", "book", "ball", "portrait", "heart", "abstract", "star"];
-const schemaVersions = [1, 2, 3, 4] as const;
+const schemaVersions = [1, 2, 3, 4, 5] as const;
 type RecordValue = Record<string, unknown>;
 
 function isRecord(value: unknown): value is RecordValue {
@@ -107,6 +107,7 @@ function validateState(value: unknown): CreatureState {
   const preferences = objectValue(value.preferences, defaults.preferences, "preferences");
   const personality = objectValue(value.personality, defaults.personality, "personality");
   const privacy = objectValue(value.privacy, defaults.privacy, "privacy");
+  const onboarding = objectValue(value.onboarding, defaults.onboarding, "onboarding");
   const habits = objectValue(value.habits, defaults.habits, "habits");
   if (typeof version !== "number" || !schemaVersions.includes(version as (typeof schemaVersions)[number])) {
     throw new Error("Invalid saved state: unsupported schema version.");
@@ -125,7 +126,7 @@ function validateState(value: unknown): CreatureState {
 
   const state: CreatureState = {
     ...defaults,
-    schemaVersion: 4,
+    schemaVersion: 5,
     location: enumValue(value.location, locations, defaults.location, "location"),
     currentActivity: enumValue(value.currentActivity, activities, defaults.currentActivity, "activity"),
     currentAnimation: enumValue(value.currentAnimation, animations, defaults.currentAnimation, "animation"),
@@ -140,6 +141,7 @@ function validateState(value: unknown): CreatureState {
     lastUserInteraction: numberValue(value.lastUserInteraction, defaults.lastUserInteraction, "last user interaction"),
     lastCreatureInteraction: numberValue(value.lastCreatureInteraction, defaults.lastCreatureInteraction, "last creature interaction"),
     lastActivityChange: numberValue(value.lastActivityChange, defaults.lastActivityChange, "last activity change"),
+    lastBongUseAt: numberValue(value.lastBongUseAt, defaults.lastBongUseAt, "last bong use", 0),
     position: {
       x: numberValue(position.x, defaults.position.x, "position.x"),
       y: numberValue(position.y, defaults.position.y, "position.y")
@@ -185,6 +187,9 @@ function validateState(value: unknown): CreatureState {
       desktopAwarenessEnabled: booleanValue(privacy.desktopAwarenessEnabled, false, "privacy.desktopAwarenessEnabled"),
       awarenessEnabled: booleanValue(privacy.awarenessEnabled, defaults.privacy.awarenessEnabled, "privacy.awarenessEnabled"),
       contextLevel: enumValue(privacy.contextLevel, ["minimal"] as const, defaults.privacy.contextLevel, "privacy context level")
+    },
+    onboarding: {
+      introduced: booleanValue(onboarding.introduced, defaults.onboarding.introduced, "onboarding.introduced")
     },
     personality: {
       curiosity: numberValue(personality.curiosity, defaults.personality.curiosity, "personality.curiosity", 0, 1),

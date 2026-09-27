@@ -54,7 +54,8 @@ export type Activity =
   | "music"
   | "show"
   | "visitRoom"
-  | "visitDesktop";
+  | "visitDesktop"
+  | "bong";
 
 export type FacingDirection = "left" | "right";
 export type CorkboardSketchKind = "plant" | "book" | "ball" | "portrait" | "heart" | "abstract" | "star";
@@ -117,6 +118,26 @@ export interface WorldPosition {
   y: number;
 }
 
+export type DesktopActivityKind =
+  | "coding"
+  | "chatting"
+  | "browsing"
+  | "reading"
+  | "writing"
+  | "drawing"
+  | "media"
+  | "presentation"
+  | "game"
+  | "idle"
+  | "unknown";
+
+export interface DesktopAwarenessContext {
+  activity: DesktopActivityKind;
+  userPresent: boolean;
+  fullscreen: boolean;
+  sampledAt: number;
+}
+
 export interface CreaturePreferences {
   bongAutonomyEnabled: boolean;
   vlcControlEnabled: boolean;
@@ -135,7 +156,7 @@ export interface CreaturePreferences {
 }
 
 export interface CreatureState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   location: Location;
   currentActivity: Activity;
   currentAnimation: AnimationName;
@@ -150,6 +171,7 @@ export interface CreatureState {
   lastUserInteraction: number;
   lastCreatureInteraction: number;
   lastActivityChange: number;
+  lastBongUseAt: number;
   position: { x: number; y: number };
   facing: FacingDirection;
   corkboardSketches: CorkboardSketch[];
@@ -163,6 +185,7 @@ export interface CreatureState {
   impulse: BehaviorImpulse | null;
   preferences: CreaturePreferences;
   privacy: { keyboardAwarenessEnabled: boolean; desktopAwarenessEnabled: boolean; awarenessEnabled: boolean; contextLevel: "minimal" };
+  onboarding: { introduced: boolean };
   personality: Personality;
 }
 
@@ -192,6 +215,7 @@ export interface InteractionSession {
 }
 
 export type InteractionTrigger =
+  | "FIRST_HELLO"
   | "BECAME_CURIOUS"
   | "BECAME_BORED"
   | "RETURNED_TO_DESKTOP"

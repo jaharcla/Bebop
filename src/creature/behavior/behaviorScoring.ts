@@ -6,10 +6,10 @@ export type RoomBehaviorKind = "bong" | "book" | "water" | "art" | "play" | "sle
 const impulseBoost: Record<ImpulseKind, Partial<Record<RoomBehaviorKind, number>>> = {
   create: { art: 2.4, music: 1.4 },
   explore: { book: 1.8, water: 1.45 },
-  play: { play: 2.3, exercise: 1.25 },
-  rest: { sleep: 2.4, sit: 1.6 },
+  play: { play: 2.3, exercise: 1.25, bong: 1.2 },
+  rest: { sleep: 2.4, sit: 1.6, bong: 1.15 },
   "seek-company": { exit: 2.4 },
-  "seek-solitude": { book: 1.25, art: 1.25, sit: 1.3 }
+  "seek-solitude": { book: 1.25, art: 1.25, sit: 1.3, bong: 1.12 }
 };
 
 const activityFor: Record<RoomBehaviorKind, CreatureState["currentActivity"]> = {
@@ -21,10 +21,13 @@ const propFor: Record<RoomBehaviorKind, RoomPropId> = {
   exercise: "dumbbell", music: "music-player", exit: "door", sit: "rug"
 };
 
-export function scoreRoomBehaviors(state: CreatureState, hour = new Date().getHours()): Record<RoomBehaviorKind, number> {
+export function scoreRoomBehaviors(state: CreatureState, hour = new Date().getHours(), now = Date.now()): Record<RoomBehaviorKind, number> {
   const p = state.personality;
+  const bongReady = state.lastBongUseAt === 0 || now - state.lastBongUseAt >= 2 * 60 * 60 * 1_000;
   const result: Record<RoomBehaviorKind, number> = {
-    bong: state.preferences.bongAutonomyEnabled && !state.habits.recentProps.includes("bong") ? 0.15 : 0,
+    bong: state.preferences.bongAutonomyEnabled && bongReady
+      ? 0.42 * (0.65 + p.chaos * 0.8 + p.independence * 0.35) * (0.75 + state.boredom / 180)
+      : 0,
     book: 8 * (0.65 + p.curiosity * 1.1),
     water: 6 * (0.7 + p.curiosity * 0.75 + p.confidence * 0.25),
     art: 8 * (0.55 + p.creativity * 1.35),
@@ -46,9 +49,9 @@ export function scoreRoomBehaviors(state: CreatureState, hour = new Date().getHo
   result.book *= solitudeBoost;
   result.art *= solitudeBoost;
   result.sit *= solitudeBoost;
-  if (hour < 6 || hour >= 23) { result.sleep *= 1.3; result.book *= 1.12; }
+  if (hour < 6 || hour >= 23) { result.sleep *= 1.3; result.book *= 1.12; result.bong *= 1.7; }
   else if (hour < 11) result.exercise *= 1.15;
-  else if (hour >= 18) { result.art *= 1.12; result.music *= 1.15; result.play *= 1.08; }
+  else if (hour >= 18) { result.art *= 1.12; result.music *= 1.15; result.play *= 1.08; result.bong *= 1.55; }
   for (const key of Object.keys(result) as RoomBehaviorKind[]) {
     const activity = activityFor[key];
     const prop = propFor[key];

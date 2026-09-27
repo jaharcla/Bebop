@@ -688,6 +688,7 @@ describe("ignored autonomous check-ins", () => {
     vi.setSystemTime(1_000_000);
     let state: CreatureState = {
       ...defaultState(),
+      onboarding: { introduced: true },
       lastUserInteraction: 0,
       lastCreatureInteraction: 0
     };
