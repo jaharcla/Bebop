@@ -27,7 +27,7 @@ export class SpriteAnimator {
   }
 
   setAnimation(name: AnimationName, restart = false): void {
-    if (name === this.requested && !restart) return;
+    if (name === this.requested && !restart && this.active === name) return;
     this.requested = name;
     this.active = name;
     this.sequenceIndex = 0;
@@ -88,6 +88,7 @@ export class SpriteAnimator {
 
       if (definition.mode === "once-idle") {
         this.active = "idle";
+        this.requested = "idle";
         this.sequenceIndex = 0;
         this.frame = animations.idle.sequence[0] ?? 0;
         this.elapsed = 0;

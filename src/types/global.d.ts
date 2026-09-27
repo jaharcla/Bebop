@@ -14,6 +14,10 @@ declare global {
     tinyMint: {
       isDevelopment: boolean;
       getState(): Promise<CreatureState>;
+      exportState(): Promise<boolean>;
+      setAwarenessEnabled(enabled: boolean): Promise<CreatureState | null>;
+      qaAutonomousCheckIn(): Promise<boolean>;
+      qaSetUserPresence(present: boolean | null): Promise<boolean | null>;
       getDialogueStatus(): Promise<DialogueSettingsStatus | null>;
       saveGroqKey(value: string): Promise<DialogueActionResult>;
       clearGroqKey(): Promise<DialogueActionResult>;
@@ -30,6 +34,7 @@ declare global {
       openSettings(): void;
       setLocation(location: Location): void;
       setActivity(activity: Activity): void;
+      setFacing(facing: "left" | "right"): void;
       useRoomProp(prop: RoomPropId): void;
       updatePreferences(preferences: Partial<CreaturePreferences>): void;
       talk(): void;

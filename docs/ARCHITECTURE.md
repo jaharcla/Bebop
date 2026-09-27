@@ -8,9 +8,9 @@ The overlay is deliberately sprite-sized rather than monitor-sized. Transparent 
 
 ## Creature Brain
 
-`CreatureBrain` owns serializable creature state. Mood, activity, location, internal needs, personality, preferences, privacy defaults, timestamps, desktop position, and current room target are independent of UI. The local behavior engine chooses weighted non-repeating activities.
+`CreatureBrain` owns serializable creature state, including horizontal facing, bounded corkboard history, needs, personality, preferences, timestamps, desktop position, and the room target. It updates at 100 ms while a physical plan is active and 500 ms while idle. Needs advance at one-second granularity; suspend/resume rebases the active plan rather than simulating missed time.
 
-Room activities now include sitting, sleeping, drawing, reading, exercising, carrying/showing, inspecting, playing, and listening to music. Clicking a room prop sends a typed `RoomPropId` to the brain, which maps it to the appropriate activity, animation, and persistent target.
+Room activities use timed multi-step plans with movement, explicit facing, interaction, pickup/drop, and safe cleanup on interruption. Horizontal movement updates facing while vertical movement preserves it. The facing wrapper mirrors the body and carried item without interfering with movement/activity transforms.
 
 ## Rendering
 
@@ -27,16 +27,18 @@ The animation engine supports:
 
 Desktop dragging uses `held` while Tiny Mint is picked up and `land` on release. The room renderer uses the real v3 prop PNGs and chooses sit/sleep/draw/read/exercise/carry/reach/tap animations according to the selected object.
 
+Desktop cursor reactions are renderer-owned transient layers. Their timeout resolves against the latest Creature Brain animation, so a reach or landing restores the current walk/carry/idle state instead of globally shortening `once-hold` room animations.
+
 ## Room
 
 The room renderer is a lightweight DOM scene using the same 960×600 coordinate system as the v3 room prototype. Prop positions and interaction anchors are defined in `src/creature/room/roomProps.ts`. The visual assets themselves are bundled through Vite from `assets/sprites/props/`.
 
-The room remains a view onto persistent creature state; it is not the simulation owner. When the room window closes, the brain continues selecting room activities and targets.
+The room remains a view onto persistent creature state; it is not the simulation owner. Completed art plans may pin a local motif on the corkboard; six are retained and rotate as new sketches arrive. The optional supplied bong strip is a manually selected animated bonus-art preview; it is not part of the mascot atlas or autonomous behavior. When the room window closes, the brain continues selecting room activities and targets.
 
 ## Persistence and events
 
-`StateStore` writes schema-versioned JSON atomically to Electron `userData` and falls back to defaults for corrupt or incompatible data. Existing schema-v1 saves remain compatible because the original room targets (`rug`, `bed`, `desk`) are still valid members of the expanded room target type.
+`StateStore` validates schema-versioned JSON, writes atomically, and rotates a validated primary into `creature-state.backup.json`. A corrupt primary recovers from a valid backup; if neither is usable, defaults are loaded and a development warning is emitted. Export contains creature state/history only, never Groq credentials or conversation messages.
 
 ## Future boundaries
 
-Awareness and AI are intentionally absent. Future providers should consume opt-in, summarized context and return suggestions to the brain; neither should own the creature lifecycle. Conversation, memory, doodle generation, and CourseAI/Notion integration can be added on top of the current deterministic creature foundation.
+The focused private alpha has optional Groq dialogue, quiet mode, deterministic noncommittal local replies, and opt-in Basic Awareness based only on local OS idle time. The idle signal gates creature-initiated check-ins and is neither sent to providers nor persisted. Screen/cross-app awareness and reliable fullscreen-app detection remain absent. Development-only room QA controls can trigger an autonomous check-in and simulate active/away presence. Dialogue providers cannot own the creature lifecycle.

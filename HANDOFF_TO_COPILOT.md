@@ -54,11 +54,24 @@ The v3 art pack has been promoted into the real Electron/TypeScript app.
 - Local dialogue works without configuration. In development, copy `.env.example` to `.env` and add `GROQ_API_KEY`; `GROQ_MODEL` defaults to `openai/gpt-oss-20b`. The main process alone reads the ignored `.env`; packaged apps do not bundle it. Requests use strict JSON Schema, qualitative runtime context, cancellation, validation, and local fallback; 401/403 credentials are latched for the runtime.
 - The last six conversation messages live in memory only. No screen awareness, keystroke, microphone, webcam, clipboard, or browser monitoring was added.
 - Speech placement is a pure tested calculation and follows overlay movement; active conversation discourages autonomous room transitions without pausing simulation.
-- The supplied bong pack is preserved only under `assets/sprites/v3-source/bonus/bong/`. It is not part of the production atlas or activity system.
+- The supplied bong pack remains outside the mascot atlas and is integrated as a manually triggered animated room-art preview; autonomous behavior never selects it.
+
+## Living behavior and alpha reliability
+
+- Room action plans now include object-facing steps. Horizontal movement sets persistent facing; vertical movement preserves it. Facing mirrors the body and carried item together without replacing the room creature's positioning or activity transforms.
+- Desktop horizontal travel and cursor approach update facing; per-pixel hit testing samples the actually rendered canvas. Room exits approach the door before transitioning; desktop arrival uses the nearest edge and faces inward.
+- Completed art routines occasionally pin one of seven locally drawn SVG motifs to the room corkboard. At most six sketches are retained in the local state.
+- The brain uses 100 ms updates while an action plan is active and 500 ms while idle. Suspend/resume rebases action clocks, and display changes reclamp the overlay to the current work area.
+- State schema 4 validates saved values, rotates a known-good backup, recovers from a corrupt primary, and exports creature state without credentials or conversations. Reset asks for native confirmation and does not touch the secure Groq key.
+- Quiet mode suppresses creature-initiated conversations; manual Talk and room interactions remain available. Offline replies to arbitrary user text are intentionally noncommittal.
+- Windows CI runs `npm ci`, typecheck, tests, and build. Electron smoke and full routine visual checks remain manual QA.
+- Optional Basic Awareness uses only local OS idle time, gates creature-initiated speech while away, defaults off, and is not persisted or sent to a provider.
+- Desktop reach/land reactions are renderer-owned transient animations that restore the latest underlying activity; room `once-hold` animations remain indefinite until an explicit state change.
+- Development room QA controls can trigger a cooldown-bypassing autonomous check-in and simulate active/away presence. Production builds omit those QA controls.
 
 ## Recommended next task
 
-Package Tiny Mint for Windows and perform visual/manual QA of speech-window placement, non-stealing focus, and startup behavior. Do not expand the autonomy/AI scope or change the canonical 16-row v3 atlas during that QA.
+Run a focused private-alpha pass on the full book, watering, art, play, and room-exit routines on representative Windows displays. Confirm the user-facing exports and save recovery with real profile backups. Do not add new world systems or alter the v3 atlas without a concrete alpha finding.
 
 ## Toggleability and stability pass
 

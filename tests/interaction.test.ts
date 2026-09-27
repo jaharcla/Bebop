@@ -7,6 +7,7 @@ import { buildDialogueMessages } from "../src/interaction/dialogue/promptBuilder
 import { validateUtterance } from "../src/interaction/dialogue/responseValidation";
 import { MIN_CREATURE_SPEECH_GAP_MS, nextCreatureSpeechDelayMs, shouldInitiateInteraction } from "../src/interaction/interactionPolicy";
 import { positionSpeechWindow, type Bounds } from "../src/interaction/speechPosition";
+import { isUserPresentFromSystemIdle, SYSTEM_IDLE_AWAY_THRESHOLD_SECONDS } from "../src/interaction/basicAwareness";
 import { defaultState } from "../src/creature/state/defaultState";
 import { loadDevelopmentEnvironment } from "../src/electron/developmentEnvironment";
 import type { CreatureState, CreatureUtterance, DialogueRequest, InteractionSession } from "../src/shared/types";
@@ -36,6 +37,18 @@ describe("interaction policy", () => {
   it("never initiates when interactions are disabled", () => {
     const state = { ...eligibleState(), preferences: { ...eligibleState().preferences, interactionsEnabled: false } };
     expect(shouldInitiateInteraction({ state, trigger: "BECAME_CURIOUS", hasActiveSession: false, now: 1_000_000, notBefore: 0, ignoredStreak: 0 })).toBe(false);
+  });
+
+  it("suppresses creature-initiated speech in quiet mode", () => {
+    const state = { ...eligibleState(), preferences: { ...eligibleState().preferences, quietMode: true } };
+    expect(shouldInitiateInteraction({
+      state,
+      trigger: "LONG_QUIET_PERIOD",
+      hasActiveSession: false,
+      now: 1_000_000,
+      notBefore: 0,
+      ignoredStreak: 0
+    })).toBe(false);
   });
 
   it("does not start a second conversation over an active session", () => {
@@ -91,6 +104,29 @@ describe("interaction policy", () => {
   it("honors the startup and cooldown deadline", () => {
     const state = eligibleState();
     expect(shouldInitiateInteraction({ state, trigger: "LONG_QUIET_PERIOD", hasActiveSession: false, now: 100, notBefore: 101, ignoredStreak: 0 })).toBe(false);
+  });
+
+  it("blocks autonomous speech when the local presence signal is away", () => {
+    const state = eligibleState();
+    expect(shouldInitiateInteraction({
+      state,
+      trigger: "LONG_QUIET_PERIOD",
+      hasActiveSession: false,
+      now: 1_000_000,
+      notBefore: 0,
+      ignoredStreak: 0,
+      userPresent: false
+    })).toBe(false);
+  });
+});
+
+describe("basic awareness", () => {
+  it("classifies only local system idle time and rejects invalid values", () => {
+    expect(isUserPresentFromSystemIdle(0)).toBe(true);
+    expect(isUserPresentFromSystemIdle(SYSTEM_IDLE_AWAY_THRESHOLD_SECONDS - 1)).toBe(true);
+    expect(isUserPresentFromSystemIdle(SYSTEM_IDLE_AWAY_THRESHOLD_SECONDS)).toBe(false);
+    expect(() => isUserPresentFromSystemIdle(-1)).toThrow();
+    expect(() => isUserPresentFromSystemIdle(Number.NaN)).toThrow();
   });
 });
 
@@ -189,6 +225,7 @@ describe("local dialogue provider", () => {
       messages: [{ role: "user", text: "?? \u0000 " + "x".repeat(900), at: 1 }]
     });
     expect(response.text.length).toBeGreaterThan(0);
+    expect(response.text).not.toMatch(/cool|sick|i'll allow/i);
   });
 });
 
@@ -441,10 +478,10 @@ describe("user-requested Talk", () => {
     expect(controller.getSession()).toBeNull();
   });
 
-  it("remains available with creature-initiated interactions disabled and supports short exchanges", async () => {
+  it("remains available in quiet mode, while paused, and when creature-initiated speech is disabled", async () => {
     let state = {
       ...defaultState(),
-      preferences: { ...defaultState().preferences, interactionsEnabled: false, paused: true }
+      preferences: { ...defaultState().preferences, interactionsEnabled: false, quietMode: true, paused: true }
     };
     const updates: Array<InteractionSession | null> = [];
     let conversationActive = false;
@@ -565,6 +602,87 @@ describe("conversation endings", () => {
 });
 
 describe("ignored autonomous check-ins", () => {
+  it("dismisses an unengaged autonomous bubble when Basic Awareness detects that the user is away", async () => {
+    const controller = new InteractionController({
+      getState: defaultState,
+      brain: {
+        setLocation: () => undefined,
+        setConversationActive: () => undefined,
+        recordConversationReply: () => undefined,
+        recordCreatureConversation: () => undefined
+      },
+      provider: new LocalDialogueProvider(() => 0),
+      onSession: () => undefined,
+      random: () => 0
+    });
+    try {
+      expect(await controller.startAutonomousCheckInForQA()).toBe(true);
+      controller.setUserPresent(false);
+      expect(controller.getSession()).toBeNull();
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("waits until local presence returns before starting the first autonomous check-in", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const state: CreatureState = {
+      ...defaultState(),
+      lastUserInteraction: 0,
+      lastCreatureInteraction: 0
+    };
+    const controller = new InteractionController({
+      getState: () => state,
+      brain: {
+        setLocation: () => undefined,
+        setConversationActive: () => undefined,
+        recordConversationReply: () => undefined,
+        recordCreatureConversation: () => undefined
+      },
+      provider: new LocalDialogueProvider(() => 0),
+      onSession: () => undefined,
+      random: () => 0
+    });
+    try {
+      controller.start();
+      controller.setUserPresent(false);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(controller.getSession()).toBeNull();
+
+      controller.setUserPresent(true);
+      controller.observeState({ ...state, mood: "curious" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(controller.getSession()?.origin).toBe("creature");
+      expect(controller.getSession()?.current.text).toBeTruthy();
+    } finally {
+      controller.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("provides a development QA path to verify the autonomous first-speech UI", async () => {
+    let state = defaultState();
+    const controller = new InteractionController({
+      getState: () => state,
+      brain: {
+        setLocation: (location) => { state = { ...state, location }; },
+        setConversationActive: () => undefined,
+        recordConversationReply: () => undefined,
+        recordCreatureConversation: () => undefined
+      },
+      provider: new LocalDialogueProvider(() => 0),
+      onSession: () => undefined,
+      random: () => 0
+    });
+    try {
+      expect(await controller.startAutonomousCheckInForQA()).toBe(true);
+      expect(controller.getSession()).toMatchObject({ origin: "creature", waitingForResponse: false });
+    } finally {
+      controller.dispose();
+    }
+  });
+
   it("delays the next creature-initiated bubble after an ignored session", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);

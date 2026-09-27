@@ -50,6 +50,8 @@ export class InteractionController {
   private notBefore: number;
   private engaged = false;
   private disposed = false;
+  private userPresent = true;
+  private attentionSuppressed = false;
   private activeReplyController: AbortController | undefined;
 
   constructor(private readonly options: InteractionControllerOptions) {
@@ -61,9 +63,49 @@ export class InteractionController {
 
   start(): void {
     if (this.disposed || this.previousState) return;
-    this.previousState = this.options.getState();
-    const startupGrace = (5 + this.random() * 5) * 60_000;
-    this.scheduleLongQuiet(startupGrace);
+    const state = this.options.getState();
+    this.previousState = state;
+    if (!state.onboarding.introduced) this.scheduleLongQuiet(45_000 + this.random() * 75_000, "FIRST_HELLO");
+    else this.scheduleLongQuiet((5 + this.random() * 5) * 60_000);
+  }
+
+  setUserPresent(present: boolean): void {
+    if (this.userPresent === present || this.disposed) return;
+    this.userPresent = present;
+    if (!present) {
+      if (this.initiationTimer) clearTimeout(this.initiationTimer);
+      this.initiationTimer = undefined;
+      if (this.session?.origin === "creature" && !this.engaged) this.closeSession();
+      return;
+    }
+
+    if (this.pendingTrigger) this.scheduleInitiation();
+    else if (!this.session) this.scheduleLongQuiet(2 * 60_000 + this.random() * 2 * 60_000);
+  }
+
+  isUserPresent(): boolean {
+    return this.userPresent;
+  }
+
+  setAttentionSuppressed(suppressed: boolean): void {
+    if (this.attentionSuppressed === suppressed || this.disposed) return;
+    this.attentionSuppressed = suppressed;
+    if (suppressed) {
+      if (this.initiationTimer) clearTimeout(this.initiationTimer);
+      this.initiationTimer = undefined;
+      if (this.session?.origin === "creature" && !this.engaged) this.closeSession();
+      return;
+    }
+    if (this.pendingTrigger) this.scheduleInitiation();
+  }
+
+  async startAutonomousCheckInForQA(): Promise<boolean> {
+    const state = this.options.getState();
+    if (this.disposed || this.session || !state.preferences.interactionsEnabled || state.preferences.quietMode
+      || state.preferences.paused || !this.userPresent || this.attentionSuppressed) return false;
+    if (state.location !== "desktop") this.options.brain.setLocation("desktop");
+    await this.openSession("creature", "LONG_QUIET_PERIOD", true);
+    return this.getSession()?.origin === "creature";
   }
 
   observeState(state: CreatureState): void {
@@ -71,14 +113,18 @@ export class InteractionController {
     const previous = this.previousState;
     this.previousState = state;
     if (!previous) return;
-    if (!state.preferences.interactionsEnabled || state.preferences.paused || state.location !== "desktop") {
+    if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop") {
       this.cancelInitiation();
+      if (state.preferences.quietMode && this.session?.origin === "creature" && !this.engaged) this.closeSession();
       return;
     }
     if (!previous.preferences.interactionsEnabled && state.preferences.interactionsEnabled && !this.session) {
       this.scheduleLongQuiet(20 * 60_000 + this.random() * 20 * 60_000);
     }
     if (previous.preferences.paused && !state.preferences.paused && !this.session) {
+      this.scheduleLongQuiet(20 * 60_000 + this.random() * 20 * 60_000);
+    }
+    if (previous.preferences.quietMode && !state.preferences.quietMode && !this.session) {
       this.scheduleLongQuiet(20 * 60_000 + this.random() * 20 * 60_000);
     }
     if (previous.location !== "desktop" && state.location === "desktop") {
@@ -158,7 +204,13 @@ export class InteractionController {
   private queueInitiation(trigger: InteractionTrigger): void {
     if (this.session || this.disposed) return;
     const state = this.options.getState();
-    if (!state.preferences.interactionsEnabled || state.preferences.paused || state.location !== "desktop") return;
+    if (trigger === "FIRST_HELLO" && state.onboarding.introduced) return;
+    if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused) return;
+    if (state.location !== "desktop" || !this.userPresent || this.attentionSuppressed) {
+      this.pendingTrigger = trigger;
+      this.scheduleLongQuiet(60_000, trigger);
+      return;
+    }
     this.pendingTrigger = trigger;
     this.scheduleInitiation();
   }
@@ -168,11 +220,13 @@ export class InteractionController {
     this.initiationTimer = undefined;
     if (!this.pendingTrigger || this.disposed) return;
     const state = this.options.getState();
-    if (!state.preferences.interactionsEnabled || state.preferences.paused || state.location !== "desktop" || this.session) {
+    if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop" || this.session) {
       this.pendingTrigger = null;
       return;
     }
-    const eligibleAt = nextAllowedInitiationAt({
+    if (!this.userPresent || this.attentionSuppressed) return;
+    const firstHello = this.pendingTrigger === "FIRST_HELLO" && !state.onboarding.introduced;
+    const eligibleAt = firstHello ? this.now() : nextAllowedInitiationAt({
       state,
       now: this.now(),
       notBefore: this.notBefore,
@@ -183,47 +237,55 @@ export class InteractionController {
       const trigger = this.pendingTrigger;
       this.pendingTrigger = null;
       const currentState = this.options.getState();
-      if (!trigger || !shouldInitiateInteraction({
+      const firstHello = trigger === "FIRST_HELLO" && !currentState.onboarding.introduced;
+      if (!trigger || (!firstHello && !shouldInitiateInteraction({
         state: currentState,
         trigger,
         hasActiveSession: this.session !== null,
         now: this.now(),
         notBefore: this.notBefore,
-        ignoredStreak: this.ignoredStreak
-      })) {
-        if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.paused && currentState.location === "desktop") {
+        ignoredStreak: this.ignoredStreak,
+        userPresent: this.userPresent,
+        attentionSuppressed: this.attentionSuppressed
+      }))) {
+        if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode && !currentState.preferences.paused && currentState.location === "desktop") {
           this.pendingTrigger = trigger;
           this.scheduleInitiation();
         }
         return;
       }
-      void this.openSession("creature", trigger).catch((error: unknown) => {
+      void this.openSession("creature", trigger, false, firstHello).catch((error: unknown) => {
         this.options.reportFailure?.(error);
       });
     }, Math.max(0, eligibleAt - this.now()));
   }
 
-  private scheduleLongQuiet(delay: number): void {
+  private scheduleLongQuiet(delay: number, trigger: InteractionTrigger = "LONG_QUIET_PERIOD"): void {
     if (this.longQuietTimer) clearTimeout(this.longQuietTimer);
     this.longQuietTimer = setTimeout(() => {
       this.longQuietTimer = undefined;
-      this.queueInitiation("LONG_QUIET_PERIOD");
+      this.queueInitiation(trigger);
     }, delay);
   }
 
-  private async openSession(origin: "creature" | "user", trigger: InteractionTrigger): Promise<void> {
+  private async openSession(origin: "creature" | "user", trigger: InteractionTrigger, forceForQA = false, firstHello = false): Promise<void> {
     if (this.session || this.disposed) return;
     if (origin === "creature") {
-      const allowed = shouldInitiateInteraction({
-        state: this.options.getState(),
+      const currentState = this.options.getState();
+      const allowed = currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode
+        && !currentState.preferences.paused && currentState.location === "desktop" && this.userPresent && !this.attentionSuppressed
+        && (forceForQA || firstHello || shouldInitiateInteraction({
+        state: currentState,
         trigger,
         hasActiveSession: false,
         now: this.now(),
         notBefore: this.notBefore,
-        ignoredStreak: this.ignoredStreak
-      });
+        ignoredStreak: this.ignoredStreak,
+        userPresent: this.userPresent,
+        attentionSuppressed: this.attentionSuppressed
+      }));
       if (!allowed) return;
-      this.notBefore = this.now() + nextCreatureSpeechDelayMs(this.ignoredStreak, this.random, this.options.getState());
+      if (!forceForQA) this.notBefore = this.now() + nextCreatureSpeechDelayMs(this.ignoredStreak, this.random, currentState);
       if (this.longQuietTimer) clearTimeout(this.longQuietTimer);
       this.longQuietTimer = undefined;
     }

@@ -35,7 +35,8 @@ export type RoomPropId =
   | "dumbbell"
   | "sketchbook"
   | "book"
-  | "watering-can";
+  | "watering-can"
+  | "bong";
 
 export type Activity =
   | "idle"
@@ -53,7 +54,17 @@ export type Activity =
   | "music"
   | "show"
   | "visitRoom"
-  | "visitDesktop";
+  | "visitDesktop"
+  | "bong";
+
+export type FacingDirection = "left" | "right";
+export type CorkboardSketchKind = "plant" | "book" | "ball" | "portrait" | "heart" | "abstract" | "star";
+
+export interface CorkboardSketch {
+  id: string;
+  kind: CorkboardSketchKind;
+  createdAt: number;
+}
 
 export type AnimationName =
   | "idle"
@@ -84,6 +95,49 @@ export interface Personality {
   sociability: number;
 }
 
+export type ImpulseKind = "create" | "explore" | "play" | "rest" | "seek-company" | "seek-solitude";
+
+export interface BehaviorImpulse {
+  kind: ImpulseKind;
+  strength: number;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface HabitProfile {
+  activityAffinity: Partial<Record<Activity, number>>;
+  propAffinity: Partial<Record<RoomPropId, number>>;
+  activityUses: Partial<Record<Activity, number>>;
+  propUses: Partial<Record<RoomPropId, number>>;
+  recentActivities: Activity[];
+  recentProps: RoomPropId[];
+}
+
+export interface WorldPosition {
+  x: number;
+  y: number;
+}
+
+export type DesktopActivityKind =
+  | "coding"
+  | "chatting"
+  | "browsing"
+  | "reading"
+  | "writing"
+  | "drawing"
+  | "media"
+  | "presentation"
+  | "game"
+  | "idle"
+  | "unknown";
+
+export interface DesktopAwarenessContext {
+  activity: DesktopActivityKind;
+  userPresent: boolean;
+  fullscreen: boolean;
+  sampledAt: number;
+}
+
 export interface CreaturePreferences {
   alwaysOnTop: boolean;
   cursorInteraction: boolean;
@@ -94,10 +148,11 @@ export interface CreaturePreferences {
   roomAutonomyEnabled: boolean;
   interactionsEnabled: boolean;
   startWithWindows: boolean;
+  quietMode: boolean;
 }
 
 export interface CreatureState {
-  schemaVersion: 1;
+  schemaVersion: 5;
   location: Location;
   currentActivity: Activity;
   currentAnimation: AnimationName;
@@ -112,10 +167,21 @@ export interface CreatureState {
   lastUserInteraction: number;
   lastCreatureInteraction: number;
   lastActivityChange: number;
+  lastBongUseAt: number;
   position: { x: number; y: number };
-  room: { target: RoomPropId };
+  facing: FacingDirection;
+  corkboardSketches: CorkboardSketch[];
+  room: {
+    target: RoomPropId;
+    position: WorldPosition;
+    carriedItem: RoomPropId | null;
+    intention: string | null;
+  };
+  habits: HabitProfile;
+  impulse: BehaviorImpulse | null;
   preferences: CreaturePreferences;
   privacy: { awarenessEnabled: boolean; contextLevel: "minimal" };
+  onboarding: { introduced: boolean };
   personality: Personality;
 }
 
@@ -145,6 +211,7 @@ export interface InteractionSession {
 }
 
 export type InteractionTrigger =
+  | "FIRST_HELLO"
   | "BECAME_CURIOUS"
   | "BECAME_BORED"
   | "RETURNED_TO_DESKTOP"

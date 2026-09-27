@@ -1,7 +1,7 @@
 import type { CreatureState } from "../../shared/types";
 
 export const defaultState = (): CreatureState => ({
-  schemaVersion: 1,
+  schemaVersion: 5,
   location: "desktop",
   currentActivity: "idle",
   currentAnimation: "idle",
@@ -16,8 +16,20 @@ export const defaultState = (): CreatureState => ({
   lastUserInteraction: Date.now(),
   lastCreatureInteraction: Date.now(),
   lastActivityChange: Date.now(),
+  lastBongUseAt: 0,
   position: { x: 80, y: 80 },
-  room: { target: "rug" },
+  facing: "right",
+  corkboardSketches: [],
+  room: { target: "door", position: { x: 850, y: 430 }, carriedItem: null, intention: null },
+  habits: {
+    activityAffinity: {},
+    propAffinity: {},
+    activityUses: {},
+    propUses: {},
+    recentActivities: [],
+    recentProps: []
+  },
+  impulse: null,
   preferences: {
     alwaysOnTop: true,
     cursorInteraction: true,
@@ -27,9 +39,11 @@ export const defaultState = (): CreatureState => ({
     roomVisitsEnabled: true,
     roomAutonomyEnabled: true,
     interactionsEnabled: true,
-    startWithWindows: false
+    startWithWindows: false,
+    quietMode: false
   },
   privacy: { awarenessEnabled: false, contextLevel: "minimal" },
+  onboarding: { introduced: false },
   personality: {
     curiosity: 0.76,
     creativity: 0.7,
@@ -52,6 +66,16 @@ export const clampState = (state: CreatureState): CreatureState => {
     socialInterest: bounded(state.socialInterest),
     boredom: bounded(state.boredom),
     curiosity: bounded(state.curiosity),
-    comfort: bounded(state.comfort)
+    comfort: bounded(state.comfort),
+    personality: {
+      curiosity: Math.max(0, Math.min(1, state.personality.curiosity)),
+      creativity: Math.max(0, Math.min(1, state.personality.creativity)),
+      chaos: Math.max(0, Math.min(1, state.personality.chaos)),
+      confidence: Math.max(0, Math.min(1, state.personality.confidence)),
+      independence: Math.max(0, Math.min(1, state.personality.independence)),
+      affection: Math.max(0, Math.min(1, state.personality.affection)),
+      patience: Math.max(0, Math.min(1, state.personality.patience)),
+      sociability: Math.max(0, Math.min(1, state.personality.sociability))
+    }
   };
 };

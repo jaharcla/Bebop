@@ -26,6 +26,10 @@
       <section aria-labelledby="behavior-heading">
         <h2 id="behavior-heading">Behavior</h2>
         <label class="setting-row">
+          <span><strong>Quiet mode</strong><small>No creature-initiated speech; manual Talk and room controls still work.</small></span>
+          <input type="checkbox" data-preference="quietMode" />
+        </label>
+        <label class="setting-row">
           <span><strong>Roaming</strong><small>Let him wander around your desktop.</small></span>
           <input type="checkbox" data-preference="roamingEnabled" />
         </label>
@@ -46,6 +50,14 @@
           <input type="checkbox" data-preference="interactionsEnabled" />
         </label>
       </section>
+      <section aria-labelledby="data-heading">
+        <h2 id="data-heading">Your Tiny Mint</h2>
+        <p class="intro">Export local creature state and corkboard sketches as JSON. This excludes credentials and conversations.</p>
+        <div class="dialogue-actions">
+          <button id="export-state" type="button" class="secondary">Export Tiny Mint</button>
+        </div>
+        <p id="export-message" class="status" role="status" aria-live="polite"></p>
+      </section>
       <section aria-labelledby="accessibility-heading">
         <h2 id="accessibility-heading">Accessibility</h2>
         <label class="setting-row">
@@ -56,6 +68,14 @@
           <span><strong>Pause Tiny Mint</strong><small>Pause autonomous decisions without hiding him.</small></span>
           <input type="checkbox" data-preference="paused" />
         </label>
+      </section>
+      <section aria-labelledby="privacy-heading">
+        <h2 id="privacy-heading">Privacy</h2>
+        <label class="setting-row">
+          <span><strong>Basic awareness</strong><small>Notice active or away using only local system idle time. No screen, app, or input content is read.</small></span>
+          <input id="basic-awareness" type="checkbox" />
+        </label>
+        <p id="awareness-message" class="status" role="status" aria-live="polite"></p>
       </section>
       <section aria-labelledby="dialogue-heading">
         <h2 id="dialogue-heading">Dialogue</h2>
