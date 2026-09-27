@@ -29,7 +29,7 @@ export const roomProps: readonly RoomPropDefinition[] = [
   { id: "sketchbook", x: 371, y: 527, w: 77, h: 61, action: "carry", activity: "carry", animation: "carry", message: "Bringing his sketchbook along." },
   { id: "book", x: 120, y: 393, w: 60, h: 66, action: "read", activity: "read", animation: "read", message: "One more page." },
   { id: "watering-can", x: 588, y: 530, w: 60, h: 58, action: "inspect", activity: "inspect", animation: "reach-right", message: "A closer look." },
-  { id: "bong", x: 334, y: 486, w: 64, h: 74, action: "inspect", activity: "inspect", animation: "reach-right", message: "Inspecting the animated bonus art." }
+  { id: "bong", x: 334, y: 486, w: 64, h: 74, action: "inspect", activity: "inspect", animation: "reach-right", message: "Taking a little bong break." }
 ] as const;
 
 export const roomPropById = (id: RoomPropId): RoomPropDefinition => {

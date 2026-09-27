@@ -112,7 +112,7 @@ describe("CreatureBrain", () => {
     expect(brain.snapshot().currentAnimation).toBe("walk");
   });
 
-  it("allows the bonus bong art only as a manually requested room inspection", () => {
+  it("starts a manually requested bong routine", () => {
     const brain = new CreatureBrain(defaultState(), () => 0.5);
     brain.patchPreferences({ roomAutonomyEnabled: false });
     brain.setLocation("room");
@@ -121,14 +121,14 @@ describe("CreatureBrain", () => {
     expect(brain.snapshot()).toMatchObject({
       location: "room",
       currentActivity: "wander",
-      room: { target: "bong", intention: "inspect the animated bonus art" }
+      room: { target: "bong", intention: "take a bong break" }
     });
   });
 
   it("persists the opt-in Basic Awareness setting", () => {
     const brain = new CreatureBrain(defaultState(), () => 0.5);
     brain.setAwarenessEnabled(true);
-    expect(brain.snapshot().privacy).toEqual({ awarenessEnabled: true, contextLevel: "minimal" });
+    expect(brain.snapshot().privacy).toEqual({ keyboardAwarenessEnabled: false, desktopAwarenessEnabled: false, awarenessEnabled: true, contextLevel: "minimal" });
   });
 
   it("keeps manual room plans usable while paused but stops autonomous plans", () => {

@@ -1,7 +1,7 @@
 import type { CreatureState, ImpulseKind, RoomPropId } from "../../shared/types";
 import { noveltyModifier } from "./habitModel";
 
-export type RoomBehaviorKind = "book" | "water" | "art" | "play" | "sleep" | "exercise" | "music" | "exit" | "sit";
+export type RoomBehaviorKind = "bong" | "book" | "water" | "art" | "play" | "sleep" | "exercise" | "music" | "exit" | "sit";
 
 const impulseBoost: Record<ImpulseKind, Partial<Record<RoomBehaviorKind, number>>> = {
   create: { art: 2.4, music: 1.4 },
@@ -13,17 +13,18 @@ const impulseBoost: Record<ImpulseKind, Partial<Record<RoomBehaviorKind, number>
 };
 
 const activityFor: Record<RoomBehaviorKind, CreatureState["currentActivity"]> = {
-  book: "read", water: "inspect", art: "draw", play: "play", sleep: "sleep",
+  bong: "rest", book: "read", water: "inspect", art: "draw", play: "play", sleep: "sleep",
   exercise: "exercise", music: "music", exit: "visitDesktop", sit: "sit"
 };
 const propFor: Record<RoomBehaviorKind, RoomPropId> = {
-  book: "bookshelf", water: "plant", art: "desk", play: "ball", sleep: "bed",
+  bong: "bong", book: "bookshelf", water: "plant", art: "desk", play: "ball", sleep: "bed",
   exercise: "dumbbell", music: "music-player", exit: "door", sit: "rug"
 };
 
 export function scoreRoomBehaviors(state: CreatureState, hour = new Date().getHours()): Record<RoomBehaviorKind, number> {
   const p = state.personality;
   const result: Record<RoomBehaviorKind, number> = {
+    bong: state.preferences.bongAutonomyEnabled && !state.habits.recentProps.includes("bong") ? 0.15 : 0,
     book: 8 * (0.65 + p.curiosity * 1.1),
     water: 6 * (0.7 + p.curiosity * 0.75 + p.confidence * 0.25),
     art: 8 * (0.55 + p.creativity * 1.35),

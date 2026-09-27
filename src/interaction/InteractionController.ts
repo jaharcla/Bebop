@@ -51,6 +51,7 @@ export class InteractionController {
   private engaged = false;
   private disposed = false;
   private userPresent = true;
+  private userBusy = false;
   private activeReplyController: AbortController | undefined;
 
   constructor(private readonly options: InteractionControllerOptions) {
@@ -70,7 +71,17 @@ export class InteractionController {
   setUserPresent(present: boolean): void {
     if (this.userPresent === present || this.disposed) return;
     this.userPresent = present;
-    if (!present) {
+    this.refreshAvailability();
+  }
+
+  setUserBusy(busy: boolean): void {
+    if (this.userBusy === busy || this.disposed) return;
+    this.userBusy = busy;
+    this.refreshAvailability();
+  }
+
+  private refreshAvailability(): void {
+    if (!this.userPresent || this.userBusy) {
       if (this.initiationTimer) clearTimeout(this.initiationTimer);
       this.initiationTimer = undefined;
       if (this.session?.origin === "creature" && !this.engaged) this.closeSession();
@@ -88,7 +99,7 @@ export class InteractionController {
   async startAutonomousCheckInForQA(): Promise<boolean> {
     const state = this.options.getState();
     if (this.disposed || this.session || !state.preferences.interactionsEnabled || state.preferences.quietMode
-      || state.preferences.paused || !this.userPresent) return false;
+      || state.preferences.paused || !this.userPresent || this.userBusy) return false;
     if (state.location !== "desktop") this.options.brain.setLocation("desktop");
     await this.openSession("creature", "LONG_QUIET_PERIOD", true);
     return this.getSession()?.origin === "creature";
@@ -191,7 +202,7 @@ export class InteractionController {
     if (this.session || this.disposed) return;
     const state = this.options.getState();
     if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused || state.location !== "desktop") return;
-    if (!this.userPresent) {
+    if (!this.userPresent || this.userBusy) {
       this.pendingTrigger = trigger;
       this.scheduleLongQuiet(5 * 60_000);
       return;
@@ -209,7 +220,7 @@ export class InteractionController {
       this.pendingTrigger = null;
       return;
     }
-    if (!this.userPresent) return;
+    if (!this.userPresent || this.userBusy) return;
     const eligibleAt = nextAllowedInitiationAt({
       state,
       now: this.now(),
@@ -228,7 +239,7 @@ export class InteractionController {
         now: this.now(),
         notBefore: this.notBefore,
         ignoredStreak: this.ignoredStreak,
-        userPresent: this.userPresent
+        userPresent: this.userPresent && !this.userBusy
       })) {
         if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode && !currentState.preferences.paused && currentState.location === "desktop") {
           this.pendingTrigger = trigger;
@@ -255,7 +266,7 @@ export class InteractionController {
     if (origin === "creature") {
       const currentState = this.options.getState();
       const allowed = currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode
-        && !currentState.preferences.paused && currentState.location === "desktop" && this.userPresent
+        && !currentState.preferences.paused && currentState.location === "desktop" && this.userPresent && !this.userBusy
         && (forceForQA || shouldInitiateInteraction({
         state: currentState,
         trigger,
@@ -263,7 +274,7 @@ export class InteractionController {
         now: this.now(),
         notBefore: this.notBefore,
         ignoredStreak: this.ignoredStreak,
-        userPresent: this.userPresent
+        userPresent: this.userPresent && !this.userBusy
       }));
       if (!allowed) return;
       if (!forceForQA) this.notBefore = this.now() + nextCreatureSpeechDelayMs(this.ignoredStreak, this.random, currentState);

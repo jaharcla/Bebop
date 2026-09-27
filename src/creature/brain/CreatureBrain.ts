@@ -9,6 +9,8 @@ import { clampState, defaultState } from "../state/defaultState";
 import { facingTowardProp } from "../world/roomEntities";
 import type { Activity, CorkboardSketchKind, CreaturePreferences, CreatureState, FacingDirection, Location, RoomPropId, WorldPosition } from "../../shared/types";
 
+import type { AppCategory } from "../../interaction/appAwareness";
+
 export type StateListener = (state: CreatureState) => void;
 
 export class CreatureBrain {
@@ -18,6 +20,10 @@ export class CreatureBrain {
   private nextDecisionAt = Date.now() + 14_000;
   private lastNeedsUpdate = Date.now();
   private conversationActive = false;
+  private appCategory: AppCategory = "other";
+  private keyboardActive = false;
+  private environmentState: "active" | "idle" | "long-idle" = "active";
+  private nextEnvironmentReactionAt = 0;
   private suspendedAt: number | undefined;
   private readonly planner: BehaviorPlanner;
   private readonly executor: ActionExecutor;
@@ -114,6 +120,34 @@ export class CreatureBrain {
     this.publish();
   }
 
+  setKeyboardAwarenessEnabled(enabled: boolean): void {
+    this.state.privacy.keyboardAwarenessEnabled = enabled;
+    this.publish();
+  }
+
+  observeDesktopActivity(category: AppCategory, keyboardActive: boolean): void {
+    this.appCategory = category;
+    this.keyboardActive = keyboardActive;
+  }
+
+  setDesktopAwarenessEnabled(enabled: boolean): void {
+    this.state.privacy.desktopAwarenessEnabled = enabled;
+    this.publish();
+  }
+
+  observeEnvironment(userState: "active" | "idle" | "long-idle", appChanged = false, fullscreen = false): void {
+    const returned = this.environmentState !== "active" && userState === "active";
+    this.environmentState = userState;
+    const now = Date.now();
+    if ((!returned && !appChanged) || fullscreen || this.keyboardActive || this.state.preferences.paused || this.conversationActive
+      || this.state.location !== "desktop" || this.state.currentActivity !== "idle"
+      || this.state.currentAnimation !== "idle" || now < this.nextEnvironmentReactionAt) return;
+    this.state.currentAnimation = returned ? "happy" : "look";
+    this.nextDecisionAt = now + 2_000;
+    this.nextEnvironmentReactionAt = now + 60_000;
+    this.publish();
+  }
+
   setAwarenessEnabled(enabled: boolean): void {
     if (this.state.privacy.awarenessEnabled === enabled) return;
     this.state.privacy = { ...this.state.privacy, awarenessEnabled: enabled };
@@ -200,7 +234,13 @@ export class CreatureBrain {
       }
       this.startPlan(this.planner.chooseRoomPlan(this.state, now));
     } else {
-      this.setActivity(chooseActivity(this.state, this.random, this.conversationActive));
+      this.setActivity(this.environmentState === "long-idle" && !this.conversationActive ? "sleep"
+        : this.environmentState === "idle" && !this.conversationActive ? "rest"
+        : !this.conversationActive && this.keyboardActive ? "sit"
+        : !this.conversationActive && (this.appCategory === "coding" || this.appCategory === "writing") ? "read"
+        : !this.conversationActive && this.appCategory === "media" ? "sit"
+        : !this.conversationActive && this.appCategory === "creative" ? "draw"
+        : chooseActivity(this.state, this.random, this.conversationActive));
     }
   }
 

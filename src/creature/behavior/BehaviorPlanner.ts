@@ -1,14 +1,16 @@
 import type { CreatureState } from "../../shared/types";
 import type { ActionPlan } from "../actions/ActionPlan";
-import { artRoutine, bookRoutine, playRoutine, roomExitRoutine, simplePropRoutine, wateringRoutine } from "../actions/actionChains";
+import { bongRoutine, artRoutine, bookRoutine, playRoutine, roomExitRoutine, simplePropRoutine, wateringRoutine } from "../actions/actionChains";
 import type { RandomSource } from "./behaviorEngine";
 import { scoreRoomBehaviors, type RoomBehaviorKind } from "./behaviorScoring";
 
 export class BehaviorPlanner {
+  private nextBongAt = 0;
   constructor(private readonly random: RandomSource = Math.random) {}
 
   chooseRoomPlan(state: CreatureState, now: number): ActionPlan {
     const scores = scoreRoomBehaviors(state);
+    if (now < this.nextBongAt) scores.bong = 0;
     const entries = Object.entries(scores).filter(([, weight]) => weight > 0) as Array<[RoomBehaviorKind, number]>;
     const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
     let cursor = this.random() * total;
@@ -17,7 +19,9 @@ export class BehaviorPlanner {
       cursor -= entry[1];
       if (cursor <= 0) { kind = entry[0]; break; }
     }
-    const plan = kind === "book" ? bookRoutine(now)
+    if (kind === "bong") this.nextBongAt = now + 30 * 60_000;
+    const plan = kind === "bong" ? bongRoutine(now, 40)
+      : kind === "book" ? bookRoutine(now)
       : kind === "water" ? wateringRoutine(now)
       : kind === "art" ? artRoutine(now)
       : kind === "play" ? playRoutine(now)

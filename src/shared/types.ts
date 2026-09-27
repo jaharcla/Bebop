@@ -118,6 +118,10 @@ export interface WorldPosition {
 }
 
 export interface CreaturePreferences {
+  bongAutonomyEnabled: boolean;
+  vlcControlEnabled: boolean;
+  spotifyControlEnabled: boolean;
+  cursorNudgesEnabled: boolean;
   alwaysOnTop: boolean;
   cursorInteraction: boolean;
   paused: boolean;
@@ -158,7 +162,7 @@ export interface CreatureState {
   habits: HabitProfile;
   impulse: BehaviorImpulse | null;
   preferences: CreaturePreferences;
-  privacy: { awarenessEnabled: boolean; contextLevel: "minimal" };
+  privacy: { keyboardAwarenessEnabled: boolean; desktopAwarenessEnabled: boolean; awarenessEnabled: boolean; contextLevel: "minimal" };
   personality: Personality;
 }
 

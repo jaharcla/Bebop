@@ -69,12 +69,36 @@
           <input type="checkbox" data-preference="paused" />
         </label>
       </section>
+      <section aria-labelledby="controls-heading">
+        <h2 id="controls-heading">Optional controls</h2>
+        <label class="setting-row"><span><strong>Cursor nudges</strong><small>Allow occasional 24-pixel nudges near Tiny Mint. Stops when you move the mouse. No clicks. Escape cancels; Ctrl+Alt+Shift+M stops controls.</small></span><input type="checkbox" data-preference="cursorNudgesEnabled" /></label>
+        <label class="setting-row"><span><strong>Spotify controls</strong><small>Let Tiny Mint play/pause or skip when you ask. Requires an active Windows media session.</small></span><input type="checkbox" data-preference="spotifyControlEnabled" /></label>
+        <label class="setting-row"><span><strong>VLC controls</strong><small>Let Tiny Mint play/pause or skip when you ask. Requires an active Windows media session.</small></span><input type="checkbox" data-preference="vlcControlEnabled" /></label>
+        <label class="setting-row"><span><strong>Autonomous bong breaks</strong><small>Allow rare room breaks, at most once per 30 minutes. Clicking the bong always starts a routine.</small></span><input type="checkbox" data-preference="bongAutonomyEnabled" /></label>
+        <div class="dialogue-actions">
+          <button data-desktop-action="cursor-nudge">Nudge cursor</button>
+          <button data-desktop-action="spotify-play-pause">Spotify play/pause</button><button data-desktop-action="spotify-next">Spotify next</button>
+          <button data-desktop-action="vlc-play-pause">VLC play/pause</button><button data-desktop-action="vlc-next">VLC next</button>
+          <button id="stop-controls">Stop controls</button>
+        </div>
+        <p id="controls-status" class="status" role="status" aria-live="polite"></p>
+      </section>
       <section aria-labelledby="privacy-heading">
         <h2 id="privacy-heading">Privacy</h2>
         <label class="setting-row">
           <span><strong>Basic awareness</strong><small>Notice active or away using only local system idle time. No screen, app, or input content is read.</small></span>
           <input id="basic-awareness" type="checkbox" />
         </label>
+        <label class="setting-row">
+          <span><strong>App awareness (Windows)</strong><small>Read along with coding or writing apps, draw with creative apps, relax with media, and hide during fullscreen apps. Reads only the foreground process name and window bounds locally. No titles or screen content; never saved or sent to AI.</small></span>
+          <input id="desktop-awareness" type="checkbox" />
+        </label>
+        <label class="setting-row">
+          <span><strong>Keyboard awareness (Windows)</strong><small>Settle down and defer automatic chatter while you type. Detects activity only, never which keys you press or what you type. Stays local and is never saved.</small></span>
+          <input id="keyboard-awareness" type="checkbox" />
+        </label>
+        <p id="keyboard-awareness-message" class="status" role="status" aria-live="polite"></p>
+        <p id="desktop-awareness-message" class="status" role="status" aria-live="polite"></p>
         <p id="awareness-message" class="status" role="status" aria-live="polite"></p>
       </section>
       <section aria-labelledby="dialogue-heading">

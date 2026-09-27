@@ -34,6 +34,13 @@ export const playRoutine = (now: number, priority = 40): ActionPlan => plan("pla
   move("ball"), { type: "face", entity: "ball" }, { type: "drop", entity: "ball" }
 ], now, priority);
 
+export const bongRoutine = (now: number, priority = 100): ActionPlan => plan("take a bong break", "rest", "bong", [
+  move("bong"), { type: "face", entity: "bong" },
+  use("bong", "use", "inspect", "sit", 5_900),
+  use("bong", "cough", "play", "tap", 900),
+  use("bong", "relax", "rest", "sit", 3_000)
+], now, priority);
+
 export const roomExitRoutine = (now: number, priority = 40): ActionPlan => plan("go see the desktop", "visitDesktop", "door", [
   move("door"), { type: "face", entity: "door" }, use("door", "leave", "visitDesktop", "walk", 700), { type: "transition", location: "desktop" }
 ], now, priority);
@@ -44,9 +51,7 @@ export function simplePropRoutine(entity: RoomPropId, now: number, priority = 10
   if (entity === "desk" || entity === "sketchbook" || entity === "corkboard") return artRoutine(now, priority);
   if (entity === "ball" || entity === "toy-box") return playRoutine(now, priority);
   if (entity === "door") return roomExitRoutine(now, priority);
-  if (entity === "bong") return plan("inspect the animated bonus art", "inspect", "bong", [
-    move("bong"), { type: "face", entity: "bong" }, use("bong", "inspect", "inspect", "reach-right", 3_000)
-  ], now, priority);
+  if (entity === "bong") return bongRoutine(now, priority);
   const affordance = roomEntities[entity].affordances[0];
   const duration = (affordance.durationMs[0] + affordance.durationMs[1]) / 2;
   return plan(`use the ${entity}`, affordance.activity, entity, [move(entity), use(entity, affordance.id, affordance.activity, affordance.animation, duration)], now, priority);

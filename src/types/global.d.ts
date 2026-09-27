@@ -15,6 +15,10 @@ declare global {
       isDevelopment: boolean;
       getState(): Promise<CreatureState>;
       exportState(): Promise<boolean>;
+      runDesktopAction(action: string): Promise<{ ok: boolean; message: string }>;
+      stopDesktopControls(): Promise<void>;
+      setKeyboardAwarenessEnabled(enabled: boolean): Promise<CreatureState | null>;
+      setDesktopAwarenessEnabled(enabled: boolean): Promise<CreatureState | null>;
       setAwarenessEnabled(enabled: boolean): Promise<CreatureState | null>;
       qaAutonomousCheckIn(): Promise<boolean>;
       qaSetUserPresence(present: boolean | null): Promise<boolean | null>;

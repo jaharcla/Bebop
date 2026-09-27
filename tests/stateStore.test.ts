@@ -27,12 +27,12 @@ describe("StateStore", () => {
     const store = new StateStore(file);
     store.save({
       ...defaultState(),
-      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      privacy: { keyboardAwarenessEnabled: true, desktopAwarenessEnabled: true, awarenessEnabled: true, contextLevel: "minimal" },
       room: { ...defaultState().room, target: "bong" }
     });
 
     expect(store.load()).toMatchObject({
-      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      privacy: { keyboardAwarenessEnabled: true, desktopAwarenessEnabled: true, awarenessEnabled: true, contextLevel: "minimal" },
       room: { target: "bong" }
     });
   });
@@ -69,7 +69,7 @@ describe("StateStore", () => {
         startWithWindows: false
       },
       personality: { creativity: 0.2, curiosity: defaults.personality.curiosity },
-      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      privacy: { keyboardAwarenessEnabled: false, desktopAwarenessEnabled: false, awarenessEnabled: true, contextLevel: "minimal" },
       room: { target: "door" }
     });
   });

@@ -11,7 +11,7 @@ Tiny Mint is a local-first Windows desktop companion. The current build includes
 - Local state migration and backup recovery, bounded corkboard sketch history, quiet mode, and JSON state export.
 - Windows installer/portable packaging and automated Windows typecheck, test, and build validation.
 
-This is a private alpha, not evidence of product-market fit. The product does not claim deep local language understanding or awareness of other applications. Basic Awareness only classifies the OS idle timer as active or away; it does not inspect screen or application content.
+This is a private alpha, not evidence of product-market fit. The product does not claim deep local language understanding. Separately opt-in Desktop Awareness observes foreground process names and window geometry locally, with fullscreen suppression and idle behavior; it never reads titles or screen content. Basic Awareness only classifies the OS idle timer as active or away; it does not inspect screen or application content.
 
 ## Current work
 
@@ -19,9 +19,9 @@ Make the existing behavior believable and reliable: consistent facing, coherent 
 
 ## Deferred
 
-- Reliable fullscreen/game detection, because the current stack has no dependable cross-app foreground signal.
+- Broader validation of fullscreen detection with exclusive games, unusual window styles, and mixed-DPI displays.
 - Battery and long-duration resource characterization across machines; no battery impact is claimed.
 - Broader desktop-world actions beyond safe movement, cursor response, and room transitions.
-- New mascot sprite families, cloud accounts, screen/cross-app awareness, generated art, social progression, mobile/macOS, and commercial/distribution strategy.
+- New mascot sprite families, cloud accounts, screen-content awareness, generated art, social progression, mobile/macOS, and commercial/distribution strategy.
 
 Revisit deferred work only when private-alpha observation identifies a concrete need.
