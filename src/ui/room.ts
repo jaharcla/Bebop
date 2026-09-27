@@ -93,10 +93,11 @@ for (const prop of roomProps) {
   if (prop.id === "bong") {
     button.classList.add("bong-prop");
     button.style.setProperty("--bong-strip", `url("${bongStripUrl}")`);
-    button.setAttribute("aria-label", "Animated bonus sprite preview");
+    button.setAttribute("aria-label", "Use the bong");
     const art = document.createElement("span");
     art.className = "bong-art";
     art.setAttribute("aria-hidden", "true");
+    art.innerHTML = '<svg viewBox="0 0 64 74" aria-hidden="true"><path d="M27 7h12v37l10 13v10H17V57l10-13Z" fill="#acd9cc" stroke="#294b43" stroke-width="3"/><path d="M20 57h26v8H20Z" fill="#71aca2"/><path d="m39 44 11-10 5 5-13 13" fill="#c3e5d4" stroke="#294b43" stroke-width="3"/></svg>';
     button.append(art);
   } else {
     const image = document.createElement("img");
@@ -110,12 +111,20 @@ for (const prop of roomProps) {
   propButtons.set(prop.id, button);
 }
 
+const bongPerformance = required<HTMLElement>("#bong-performance");
+bongPerformance.style.setProperty("--bong-strip", 'url("' + bongStripUrl + '")');
+
 function render(state: CreatureState): void {
   const isHome = state.location === "room";
   document.documentElement.classList.toggle(
     "reduced-motion",
     state.preferences.reducedMotion || systemMotionPreference.matches
   );
+  const bongRoutine = isHome && state.room.target === "bong" && state.room.intention === "take a bong break";
+  const bongPhase = bongRoutine && state.currentActivity === "inspect" ? "use"
+    : bongRoutine && state.currentActivity === "play" ? "cough" : "none";
+  creature.dataset.bongPhase = bongPhase;
+  bongPerformance.style.animationPlayState = state.preferences.paused || state.preferences.reducedMotion || systemMotionPreference.matches ? "paused" : "running";
   creature.hidden = !isHome;
   send.textContent = isHome ? "Send Tiny Mint outside" : "Call Tiny Mint home";
   animator.setPaused(state.preferences.paused || state.preferences.reducedMotion || systemMotionPreference.matches);
@@ -126,7 +135,7 @@ function render(state: CreatureState): void {
     button.dataset.selected = String(isHome && id === state.room.target);
     button.dataset.carried = String(id === state.room.carriedItem);
     if (id === "bong") {
-      button.dataset.active = String(isHome && state.room.target === "bong" && state.currentActivity === "inspect" && state.room.intention !== null);
+      button.dataset.active = String(bongPhase !== "none");
     }
   }
 

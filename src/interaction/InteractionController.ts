@@ -4,7 +4,8 @@ import type {
   CreatureUtterance,
   DialogueRequest,
   InteractionSession,
-  InteractionTrigger
+  InteractionTrigger,
+  DesktopAwarenessContext
 } from "../shared/types";
 import type { DialogueProvider } from "./dialogue/DialogueProvider";
 import { LocalDialogueProvider } from "./dialogue/LocalDialogueProvider";
@@ -26,6 +27,7 @@ export interface InteractionBrain {
 
 export interface InteractionControllerOptions {
   getState(): CreatureState;
+  getDesktopContext?(): DesktopAwarenessContext | null;
   brain: InteractionBrain;
   provider: DialogueProvider;
   onSession(session: InteractionSession | null): void;
@@ -51,6 +53,7 @@ export class InteractionController {
   private engaged = false;
   private disposed = false;
   private userPresent = true;
+  private userBusy = false;
   private attentionSuppressed = false;
   private activeReplyController: AbortController | undefined;
 
@@ -72,7 +75,17 @@ export class InteractionController {
   setUserPresent(present: boolean): void {
     if (this.userPresent === present || this.disposed) return;
     this.userPresent = present;
-    if (!present) {
+    this.refreshAvailability();
+  }
+
+  setUserBusy(busy: boolean): void {
+    if (this.userBusy === busy || this.disposed) return;
+    this.userBusy = busy;
+    this.refreshAvailability();
+  }
+
+  private refreshAvailability(): void {
+    if (!this.userPresent || this.userBusy) {
       if (this.initiationTimer) clearTimeout(this.initiationTimer);
       this.initiationTimer = undefined;
       if (this.session?.origin === "creature" && !this.engaged) this.closeSession();
@@ -102,7 +115,7 @@ export class InteractionController {
   async startAutonomousCheckInForQA(): Promise<boolean> {
     const state = this.options.getState();
     if (this.disposed || this.session || !state.preferences.interactionsEnabled || state.preferences.quietMode
-      || state.preferences.paused || !this.userPresent || this.attentionSuppressed) return false;
+      || state.preferences.paused || !this.userPresent || this.userBusy || this.attentionSuppressed) return false;
     if (state.location !== "desktop") this.options.brain.setLocation("desktop");
     await this.openSession("creature", "LONG_QUIET_PERIOD", true);
     return this.getSession()?.origin === "creature";
@@ -206,7 +219,7 @@ export class InteractionController {
     const state = this.options.getState();
     if (trigger === "FIRST_HELLO" && state.onboarding.introduced) return;
     if (!state.preferences.interactionsEnabled || state.preferences.quietMode || state.preferences.paused) return;
-    if (state.location !== "desktop" || !this.userPresent || this.attentionSuppressed) {
+    if (state.location !== "desktop" || !this.userPresent || this.userBusy || this.attentionSuppressed) {
       this.pendingTrigger = trigger;
       this.scheduleLongQuiet(60_000, trigger);
       return;
@@ -224,7 +237,7 @@ export class InteractionController {
       this.pendingTrigger = null;
       return;
     }
-    if (!this.userPresent || this.attentionSuppressed) return;
+    if (!this.userPresent || this.userBusy || this.attentionSuppressed) return;
     const firstHello = this.pendingTrigger === "FIRST_HELLO" && !state.onboarding.introduced;
     const eligibleAt = firstHello ? this.now() : nextAllowedInitiationAt({
       state,
@@ -245,7 +258,7 @@ export class InteractionController {
         now: this.now(),
         notBefore: this.notBefore,
         ignoredStreak: this.ignoredStreak,
-        userPresent: this.userPresent,
+        userPresent: this.userPresent && !this.userBusy,
         attentionSuppressed: this.attentionSuppressed
       }))) {
         if (trigger && currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode && !currentState.preferences.paused && currentState.location === "desktop") {
@@ -273,7 +286,7 @@ export class InteractionController {
     if (origin === "creature") {
       const currentState = this.options.getState();
       const allowed = currentState.preferences.interactionsEnabled && !currentState.preferences.quietMode
-        && !currentState.preferences.paused && currentState.location === "desktop" && this.userPresent && !this.attentionSuppressed
+        && !currentState.preferences.paused && currentState.location === "desktop" && this.userPresent && !this.userBusy && !this.attentionSuppressed
         && (forceForQA || firstHello || shouldInitiateInteraction({
         state: currentState,
         trigger,
@@ -281,7 +294,7 @@ export class InteractionController {
         now: this.now(),
         notBefore: this.notBefore,
         ignoredStreak: this.ignoredStreak,
-        userPresent: this.userPresent,
+        userPresent: this.userPresent && !this.userBusy,
         attentionSuppressed: this.attentionSuppressed
       }));
       if (!allowed) return;
@@ -308,7 +321,7 @@ export class InteractionController {
   private async generateReply(trigger: InteractionTrigger): Promise<void> {
     const session = this.session;
     if (!session) return;
-    const request = buildRequest(trigger, this.options.getState(), session.messages);
+    const request = buildRequest(trigger, this.options.getState(), session.messages, this.options.getDesktopContext?.() ?? null);
     this.activeReplyController?.abort();
     const replyController = new AbortController();
     this.activeReplyController = replyController;
@@ -372,7 +385,7 @@ export class InteractionController {
   }
 }
 
-function buildRequest(trigger: InteractionTrigger, state: CreatureState, messages: ConversationMessage[]): DialogueRequest {
+function buildRequest(trigger: InteractionTrigger, state: CreatureState, messages: ConversationMessage[], desktopContext: DesktopAwarenessContext | null): DialogueRequest {
   return {
     trigger,
     context: {
@@ -380,12 +393,8 @@ function buildRequest(trigger: InteractionTrigger, state: CreatureState, message
       energy: state.energy,
       currentActivity: state.currentActivity,
       location: state.location,
-      personality: {
-        curiosity: state.personality.curiosity,
-        creativity: state.personality.creativity,
-        independence: state.personality.independence,
-        sociability: state.personality.sociability
-      }
+      personality: { ...state.personality },
+      desktopContext
     },
     messages: messages.slice(-MAX_CONVERSATION_MESSAGES)
   };

@@ -7,7 +7,7 @@ const use = (entity: RoomPropId, affordance: string, activity: Activity, animati
   ({ type: "interact", entity, affordance, activity, animation, durationMs });
 
 function plan(intention: string, habitActivity: Activity, habitProp: RoomPropId, steps: ActionStep[], now: number, priority: number): ActionPlan {
-  return { id: `${intention}-${now}`, intention, habitActivity, habitProp, steps, startedAt: now, priority, interruptibility: priority >= 100 ? "low" : "normal" };
+  return { id: `${intention}-${now}`, origin: "user", intention, habitActivity, habitProp, steps, startedAt: now, priority, interruptibility: priority >= 100 ? "low" : "normal" };
 }
 
 export const bookRoutine = (now: number, priority = 40): ActionPlan => plan("read a book", "read", "bookshelf", [
@@ -34,13 +34,15 @@ export const playRoutine = (now: number, priority = 40): ActionPlan => plan("pla
   move("ball"), { type: "face", entity: "ball" }, { type: "drop", entity: "ball" }
 ], now, priority);
 
-export const roomExitRoutine = (now: number, priority = 40): ActionPlan => plan("go see the desktop", "visitDesktop", "door", [
-  move("door"), { type: "face", entity: "door" }, use("door", "leave", "visitDesktop", "walk", 700), { type: "transition", location: "desktop" }
+export const bongRoutine = (now: number, priority = 100): ActionPlan => plan("take a bong break", "rest", "bong", [
+  move("bong"), { type: "face", entity: "bong" },
+  use("bong", "use", "inspect", "sit", 5_900),
+  use("bong", "cough", "play", "tap", 900),
+  use("bong", "relax", "rest", "sit", 3_000)
 ], now, priority);
 
-export const bongRoutine = (now: number, priority = 40): ActionPlan => plan("take a bong break", "bong", "bong", [
-  move("bong"), { type: "face", entity: "bong" }, use("bong", "use", "bong", "sit", 3_200),
-  { type: "animate", activity: "sit", animation: "sit", durationMs: 4_000, entity: "bong" }
+export const roomExitRoutine = (now: number, priority = 40): ActionPlan => plan("go see the desktop", "visitDesktop", "door", [
+  move("door"), { type: "face", entity: "door" }, use("door", "leave", "visitDesktop", "walk", 700), { type: "transition", location: "desktop" }
 ], now, priority);
 
 export function simplePropRoutine(entity: RoomPropId, now: number, priority = 100): ActionPlan {

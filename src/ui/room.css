@@ -22,8 +22,17 @@ button { font: inherit; color: inherit; }
 .room-prop[data-selected="true"] { filter: drop-shadow(0 0 2px #4b806c) drop-shadow(0 0 5px #8cc3a4); }
 .room-prop[data-carried="true"] { visibility: hidden; }
 .room-prop.bong-prop { overflow: hidden; }
-.bong-art { position: absolute; inset: 0; display: block; background-image: var(--bong-strip); background-size: 400% 100%; background-position: 0 0; image-rendering: pixelated; }
-.bong-prop[data-active="true"] .bong-art { animation: bong-preview 2.95s steps(1, end) infinite; }
+.bong-art { position: absolute; inset: 0; display: block; }
+.bong-art svg { width: 100%; height: 100%; }
+.bong-prop[data-active="true"] { visibility: hidden; }
+#bong-performance { display: none; position: absolute; inset: 0; background-image: var(--bong-strip); background-size: 400% 100%; image-rendering: pixelated; }
+#room-creature[data-bong-phase="use"] #mint, #room-creature[data-bong-phase="cough"] #mint { visibility: hidden; }
+#room-creature[data-bong-phase="use"] #bong-performance { display: block; animation: bong-preview 2.95s steps(1, end) infinite; }
+#room-creature[data-bong-phase="cough"] #bong-performance { display: block; background-position: 100% 0; }
+#room-creature[data-bong-phase="cough"] { animation: none; }
+:root.reduced-motion #bong-performance { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { #bong-performance { animation: none !important; } }
+
 @keyframes bong-preview {
   0%, 22% { background-position: 0 0; }
   22.01%, 39% { background-position: 33.333% 0; }

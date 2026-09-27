@@ -5,8 +5,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { CreatureBrain } from "../creature/brain/CreatureBrain";
 import { loadDevelopmentEnvironment } from "./developmentEnvironment";
 import { InteractionController } from "../interaction/InteractionController";
+import { DesktopControl, actionAllowed, isDesktopAction } from "./DesktopControl";
+import { classifyApp } from "../interaction/appAwareness";
+import { FocusSessionTracker } from "../interaction/focusAwareness";
+import { DesktopAwareness, type ForegroundContext } from "./DesktopAwareness";
 import { isUserPresentFromSystemIdle } from "../interaction/basicAwareness";
-import { classifyDesktopActivity, FOREGROUND_SAMPLE_INTERVAL_MS, isFullscreenWindow, sampleWindowsForegroundWindow } from "../interaction/desktopAwareness";
 import { createDialogueProvider as selectDialogueProvider } from "../interaction/dialogue/createDialogueProvider";
 import type { DialogueProvider } from "../interaction/dialogue/DialogueProvider";
 import { LocalDialogueProvider } from "../interaction/dialogue/LocalDialogueProvider";
@@ -45,9 +48,24 @@ let speechWindowSize = { ...SPEECH_WINDOW_MIN_SIZE };
 let saveTimer: NodeJS.Timeout | undefined;
 let movementTimer: NodeJS.Timeout | undefined;
 let cursorTimer: NodeJS.Timeout | undefined;
+let foregroundContext: ForegroundContext | null = null;
+let desktopHidden = false;
+let keyboardBusy = false;
+const desktopControl = new DesktopControl((action) => !!brain && actionAllowed(action, brain.snapshot().preferences)
+  && !brain.snapshot().preferences.paused && !desktopHidden && !dragOrigin
+  && (action !== "cursor-nudge" || (!keyboardBusy && !interactionController?.getSession())));
+function stopDesktopControls(): void {
+  desktopControl.cancel();
+  brain.patchPreferences({ cursorNudgesEnabled: false, spotifyControlEnabled: false, vlcControlEnabled: false });
+}
+let lastActiveApp: string | null = null;
+const desktopAwareness = new DesktopAwareness((context) => {
+  foregroundContext = context;
+  sampleSystemAwareness();
+});
 let awarenessTimer: NodeJS.Timeout | undefined;
-let awarenessSampling = false;
 let desktopAwarenessContext: DesktopAwarenessContext | null = null;
+const focusTracker = new FocusSessionTracker();
 let qaPresenceOverride: boolean | null = null;
 let displayChangedHandler: (() => void) | undefined;
 let suspendHandler: (() => void) | undefined;
@@ -70,7 +88,7 @@ else {
   app.on("second-instance", () => {
     if (!brain) return;
     brain.setLocation("desktop");
-    overlayWindow?.showInactive();
+    if (!desktopHidden) overlayWindow?.showInactive();
   });
 }
 
@@ -123,7 +141,7 @@ function createOverlay(state: CreatureState): void {
 
 function positionSpeechWindow(): void {
   if (!speechWindow || speechWindow.isDestroyed() || !overlayWindow || overlayWindow.isDestroyed()) return;
-  if (brain.snapshot().location !== "desktop") {
+  if (desktopHidden || brain.snapshot().location !== "desktop") {
     speechWindow.hide();
     return;
   }
@@ -146,7 +164,7 @@ function positionSpeechWindowForDisplay(
 }
 
 function showSpeechSession(session: InteractionSession | null): void {
-  if (!session) {
+  if (!session || desktopHidden) {
     speechWindow?.hide();
     return;
   }
@@ -179,7 +197,7 @@ function showSpeechSession(session: InteractionSession | null): void {
     speechWindow.webContents.on("did-finish-load", () => {
       speechWindowReady = true;
       const current = interactionController?.getSession();
-      if (current && speechWindow && !speechWindow.isDestroyed()) {
+      if (current && !desktopHidden && speechWindow && !speechWindow.isDestroyed()) {
         speechWindow.webContents.send("interaction:changed", current);
         positionSpeechWindow();
         speechWindow.showInactive();
@@ -190,7 +208,7 @@ function showSpeechSession(session: InteractionSession | null): void {
     speechWindow.webContents.send("interaction:changed", session);
   }
   positionSpeechWindow();
-  if (speechWindowReady && !speechWindow.isVisible()) speechWindow.showInactive();
+  if (!desktopHidden && speechWindowReady && !speechWindow.isVisible()) speechWindow.showInactive();
 }
 
 function startUserTalk(): void {
@@ -362,7 +380,7 @@ function broadcast(state: CreatureState): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send("state:changed", state);
   interactionController?.observeState(state);
   if (overlayWindow && !overlayWindow.isDestroyed()) {
-    if (state.location === "desktop") overlayWindow.showInactive();
+    if (state.location === "desktop" && !desktopHidden) overlayWindow.showInactive();
     else overlayWindow.hide();
   }
   if (trayPauseItem) trayPauseItem.label = state.preferences.paused ? "Resume" : "Pause";
@@ -394,7 +412,7 @@ function scheduleSave(): void {
 
 function updateMovement(state: CreatureState): void {
   const movingActivity = state.currentActivity === "wander" || state.currentActivity === "observe" || state.currentActivity === "visitRoom";
-  const shouldMove = state.location === "desktop" && movingActivity && state.preferences.roamingEnabled && !state.preferences.paused && !dragOrigin;
+  const shouldMove = !desktopHidden && !keyboardBusy && state.location === "desktop" && movingActivity && state.preferences.roamingEnabled && !state.preferences.paused && !dragOrigin;
   if (!shouldMove && movementTimer) {
     clearInterval(movementTimer);
     movementTimer = undefined;
@@ -438,46 +456,71 @@ function updateMovement(state: CreatureState): void {
   }
 }
 
-async function sampleSystemAwareness(): Promise<void> {
-  if (!brain || !interactionController || !brain.snapshot().privacy.awarenessEnabled || awarenessSampling) return;
-  awarenessSampling = true;
-  try {
-    const systemPresent = isUserPresentFromSystemIdle(powerMonitor.getSystemIdleTime());
-    const foreground = await sampleWindowsForegroundWindow();
-    let fullscreen = false;
-    let activity: DesktopAwarenessContext["activity"] = systemPresent ? "unknown" : "idle";
-    if (foreground) {
-      activity = classifyDesktopActivity(foreground.processName, foreground.title);
-      const center = { x: Math.round(foreground.bounds.x + foreground.bounds.width / 2), y: Math.round(foreground.bounds.y + foreground.bounds.height / 2) };
-      fullscreen = isFullscreenWindow(foreground.bounds, screen.getDisplayNearestPoint(center).bounds);
+function sampleSystemAwareness(): void {
+  if (!brain || !interactionController) return;
+  const privacy = brain.snapshot().privacy;
+  const enabled = privacy.awarenessEnabled || privacy.desktopAwarenessEnabled;
+  let idleSeconds = 0;
+  try { if (enabled) idleSeconds = powerMonitor.getSystemIdleTime(); } catch { }
+  const present = !enabled || (qaPresenceOverride ?? isUserPresentFromSystemIdle(idleSeconds));
+  const hidden = privacy.desktopAwarenessEnabled && foregroundContext?.fullscreen === true;
+  const visibilityChanged = desktopHidden !== hidden;
+  desktopHidden = hidden;
+  const keyboardActive = privacy.keyboardAwarenessEnabled && foregroundContext?.keyboardActive === true;
+  const typingChanged = keyboardBusy !== keyboardActive;
+  keyboardBusy = keyboardActive;
+  const activeApp = privacy.desktopAwarenessEnabled ? foregroundContext?.activeApp ?? null : null;
+  const appChanged = !!activeApp && !!lastActiveApp && activeApp !== lastActiveApp;
+  if (activeApp || !privacy.desktopAwarenessEnabled) lastActiveApp = activeApp;
+  const category = classifyApp(activeApp);
+  const activity: DesktopAwarenessContext["activity"] = category === "browser" ? "browsing"
+    : category === "creative" ? "drawing"
+      : category === "chat" ? "chatting"
+        : category === "presentation" ? "presentation"
+          : category === "other" ? (present ? "unknown" : "idle")
+            : category;
+  const now = Date.now();
+  const focus = focusTracker.sample(activity, present, hidden, privacy.desktopAwarenessEnabled, now);
+  const context = enabled
+    ? { activity, userPresent: present, fullscreen: hidden, sampledAt: now, ...focus }
+    : null;
+  desktopAwarenessContext = context;
+  brain.setDesktopContext(context);
+  brain.observeDesktopActivity(category, keyboardActive);
+  brain.observeEnvironment(!enabled || present ? "active" : idleSeconds >= 900 ? "long-idle" : "idle", appChanged, hidden);
+  interactionController.setUserBusy(keyboardActive || context?.focusState === "focused");
+  interactionController.setUserPresent(present && !hidden);
+  interactionController.setAttentionSuppressed(hidden);
+  if (keyboardActive || hidden) desktopControl.cancel();
+  if (typingChanged) updateMovement(brain.snapshot());
+  if (visibilityChanged) {
+    if (hidden) { overlayWindow?.hide(); speechWindow?.hide(); }
+    else {
+      if (brain.snapshot().location === "desktop") overlayWindow?.showInactive();
+      showSpeechSession(interactionController.getSession());
     }
-    const context: DesktopAwarenessContext = { userPresent: qaPresenceOverride ?? systemPresent, activity, fullscreen, sampledAt: Date.now() };
-    desktopAwarenessContext = context;
-    brain.setDesktopContext(context);
-    interactionController.setUserPresent(context.userPresent);
-    interactionController.setAttentionSuppressed(context.fullscreen);
-  } catch (error) {
-    console.warn("Could not sample local Basic Awareness context.", error);
-  } finally {
-    awarenessSampling = false;
+    updateMovement(brain.snapshot());
   }
 }
 
 function refreshSystemAwareness(): void {
   if (!brain || !interactionController) return;
-  if (!brain.snapshot().privacy.awarenessEnabled) {
+  const privacy = brain.snapshot().privacy;
+  if (privacy.desktopAwarenessEnabled || privacy.keyboardAwarenessEnabled) desktopAwareness.start({ app: privacy.desktopAwarenessEnabled, keyboard: privacy.keyboardAwarenessEnabled });
+  else desktopAwareness.stop();
+  if (!privacy.awarenessEnabled && !privacy.desktopAwarenessEnabled && !privacy.keyboardAwarenessEnabled) {
     if (awarenessTimer) clearInterval(awarenessTimer);
     awarenessTimer = undefined;
-    awarenessSampling = false;
     qaPresenceOverride = null;
-    desktopAwarenessContext = null;
-    brain.setDesktopContext(null);
-    interactionController.setUserPresent(true);
-    interactionController.setAttentionSuppressed(false);
+    sampleSystemAwareness();
     return;
   }
-  void sampleSystemAwareness();
-  if (!awarenessTimer) awarenessTimer = setInterval(() => { void sampleSystemAwareness(); }, FOREGROUND_SAMPLE_INTERVAL_MS);
+  sampleSystemAwareness();
+  if (!awarenessTimer) awarenessTimer = setInterval(() => {
+    const privacy = brain.snapshot().privacy;
+    if (privacy.desktopAwarenessEnabled || privacy.keyboardAwarenessEnabled) desktopAwareness.start({ app: privacy.desktopAwarenessEnabled, keyboard: privacy.keyboardAwarenessEnabled });
+    sampleSystemAwareness();
+  }, 2_000);
 }
 
 function chooseDesktopGoal(state: CreatureState): { x: number; y: number; kind: "wander" | "cursor" | "exit" | "enter" } {
@@ -533,7 +576,7 @@ function confirmReset(sender: Electron.WebContents): void {
     cancelId: 1,
     noLink: true
   }).then(({ response }) => {
-    if (response === 0) brain.reset();
+    if (response === 0) { desktopControl.cancel(); brain.reset(); refreshSystemAwareness(); }
   }).catch((error: unknown) => console.warn("Could not confirm Tiny Mint reset.", error));
 }
 
@@ -571,6 +614,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const preferenceKeys: readonly (keyof CreaturePreferences)[] = [
+  "bongAutonomyEnabled",
+  "vlcControlEnabled",
+  "spotifyControlEnabled",
+  "cursorNudgesEnabled",
   "alwaysOnTop",
   "cursorInteraction",
   "paused",
@@ -628,6 +675,23 @@ function registerIpc(): void {
       throw error;
     }
     return true;
+  });
+  ipcMain.handle("desktop:action", (event, action: unknown) => {
+    if (settingsWindow?.webContents !== event.sender || !isDesktopAction(action)) return { ok: false, message: "Action is not allowed." };
+    return desktopControl.run(action);
+  });
+  ipcMain.handle("desktop:stop", (event) => { if (settingsWindow?.webContents === event.sender) stopDesktopControls(); });
+  ipcMain.handle("privacy:keyboard-awareness", (event, enabled: unknown) => {
+    if (settingsWindow?.webContents !== event.sender || typeof enabled !== "boolean") return null;
+    brain.setKeyboardAwarenessEnabled(enabled);
+    refreshSystemAwareness();
+    return brain.snapshot();
+  });
+  ipcMain.handle("privacy:desktop-awareness", (event, enabled: unknown) => {
+    if (settingsWindow?.webContents !== event.sender || typeof enabled !== "boolean") return null;
+    brain.setDesktopAwarenessEnabled(enabled);
+    refreshSystemAwareness();
+    return brain.snapshot();
   });
   ipcMain.handle("privacy:awareness", (event, enabled: unknown) => {
     if (settingsWindow?.webContents !== event.sender || typeof enabled !== "boolean") return null;
@@ -723,6 +787,7 @@ function registerIpc(): void {
       overlayWindow?.setAlwaysOnTop(preferences.alwaysOnTop!, "floating");
       speechWindow?.setAlwaysOnTop(preferences.alwaysOnTop!, "floating");
     }
+    desktopControl.cancel();
     brain.patchPreferences(preferences);
   });
   ipcMain.on("interaction:start", (event) => {
@@ -821,9 +886,38 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   const settingsControlCount = await settings.webContents.executeJavaScript(
     "document.querySelectorAll('input[data-preference]').length"
   ) as number;
-  if (settingsControlCount !== 10) throw new Error(`Expected 10 settings controls; found ${settingsControlCount}.`);
+  if (settingsControlCount !== 14) throw new Error(`Expected 14 settings controls; found ${settingsControlCount}.`);
   const awarenessEnabledState = await settings.webContents.executeJavaScript("window.tinyMint.setAwarenessEnabled(true)") as CreatureState | null;
   const awarenessDisabledState = await settings.webContents.executeJavaScript("window.tinyMint.setAwarenessEnabled(false)") as CreatureState | null;
+  const desktopAwarenessEnabledState = await settings.webContents.executeJavaScript("window.tinyMint.setDesktopAwarenessEnabled(true)") as CreatureState | null;
+  const desktopAwarenessDisabledState = await settings.webContents.executeJavaScript("window.tinyMint.setDesktopAwarenessEnabled(false)") as CreatureState | null;
+  if (!desktopAwarenessEnabledState?.privacy.desktopAwarenessEnabled || desktopAwarenessDisabledState?.privacy.desktopAwarenessEnabled !== false) {
+    throw new Error("Desktop awareness settings did not round-trip.");
+  }
+  brain.setDesktopAwarenessEnabled(true);
+  foregroundContext = { activeApp: "fullscreen-test", processId: 123, fullscreen: true, keyboardActive: false };
+  sampleSystemAwareness();
+  broadcast(brain.snapshot());
+  if (overlayWindow.isVisible() || interactionController.isUserPresent()) throw new Error("Fullscreen suppression failed.");
+  foregroundContext = null;
+  sampleSystemAwareness();
+  if (!overlayWindow.isVisible()) throw new Error("Fullscreen recovery failed.");
+  brain.setDesktopAwarenessEnabled(false);
+  refreshSystemAwareness();
+  const deniedCursorAction = await settings.webContents.executeJavaScript("window.tinyMint.runDesktopAction('cursor-nudge')") as { ok: boolean };
+  if (deniedCursorAction.ok) throw new Error("Desktop action ran without permission.");
+  const keyboardEnabledState = await settings.webContents.executeJavaScript("window.tinyMint.setKeyboardAwarenessEnabled(true)") as CreatureState | null;
+  const keyboardDisabledState = await settings.webContents.executeJavaScript("window.tinyMint.setKeyboardAwarenessEnabled(false)") as CreatureState | null;
+  if (!keyboardEnabledState?.privacy.keyboardAwarenessEnabled || keyboardDisabledState?.privacy.keyboardAwarenessEnabled !== false) {
+    throw new Error("Keyboard awareness settings did not round-trip.");
+  }
+  brain.setKeyboardAwarenessEnabled(true);
+  foregroundContext = { activeApp: null, processId: 0, fullscreen: false, keyboardActive: true };
+  sampleSystemAwareness();
+  if (await interactionController.startAutonomousCheckInForQA()) throw new Error("Keyboard activity did not suppress autonomous speech.");
+  if (!overlayWindow.isVisible()) throw new Error("Keyboard activity hid the creature.");
+  brain.setKeyboardAwarenessEnabled(false);
+  refreshSystemAwareness();
   const basicAwarenessRoundTrip = awarenessEnabledState?.privacy.awarenessEnabled === true
     && awarenessDisabledState?.privacy.awarenessEnabled === false;
   if (!basicAwarenessRoundTrip) throw new Error("Basic Awareness did not round-trip through the Settings IPC.");
@@ -1209,7 +1303,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
         const image = button.querySelector('img');
         const bonusArt = button.querySelector('.bong-art');
         return Boolean((image && image.complete && image.naturalWidth > 0)
-          || (bonusArt && getComputedStyle(bonusArt).backgroundImage !== 'none'));
+          || (bonusArt && bonusArt.querySelector('svg')));
       }).length;
       return { creatureVisible: !creature.hidden && spritePixels, loadedProps, totalProps: props.length };
     })()
@@ -1379,7 +1473,7 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
   await setCheckbox("quietMode", true);
   store.save(brain.snapshot());
   const persisted = store.load();
-  if (persisted.schemaVersion !== 4 || persisted.location !== "desktop") {
+  if (persisted.schemaVersion !== 5 || persisted.location !== "desktop") {
     throw new Error("Returned desktop state was not persisted correctly.");
   }
   const overlayBounds = overlayWindow.getBounds();
@@ -1393,6 +1487,8 @@ async function runSmokeTest(outputDirectory: string): Promise<void> {
     loadedRoomProps: roomRender.loadedProps,
     settingsControlCount,
     basicAwarenessRoundTrip,
+    keyboardAwarenessRoundTrip: true,
+    typingSuppressesAutonomousSpeech: true,
     autonomousSpeechVisible,
     dialogueProvider,
     secureKeyEncrypted: true,
@@ -1447,6 +1543,7 @@ app.whenReady().then(() => {
   brain = new CreatureBrain(initialState, process.env.TINY_MINT_SMOKE_OUTPUT ? () => 0 : Math.random);
   interactionController = new InteractionController({
     getState: () => brain.snapshot(),
+    getDesktopContext: () => desktopAwarenessContext,
     brain,
     provider: createDialogueProvider(),
     onSession: showSpeechSession,
@@ -1462,8 +1559,17 @@ app.whenReady().then(() => {
   refreshSystemAwareness();
   const updateCursor = () => {
     const state = brain.snapshot();
+    const context = desktopAwarenessContext;
+    const casualContext = !context || ["browsing", "media", "idle", "unknown"].includes(context.activity);
+    const nudgeChance = (0.0015 + state.personality.confidence * 0.003 + state.personality.curiosity * 0.0025) * (casualContext ? 1.35 : 1);
+    if (state.preferences.cursorNudgesEnabled && state.location === "desktop" && state.currentActivity === "observe"
+      && context?.focusState !== "focused" && !context?.fullscreen
+      && !process.env.TINY_MINT_SMOKE_OUTPUT && Math.random() < nudgeChance) {
+      const point = screen.getCursorScreenPoint();
+      if (Math.hypot(point.x - state.position.x - 96, point.y - state.position.y - 96) < 180) void desktopControl.run("cursor-nudge");
+    }
     previousCursorPoint = cursorPoint;
-    cursorPoint = state.preferences.cursorInteraction && state.location === "desktop" ? screen.getCursorScreenPoint() : null;
+    cursorPoint = !desktopHidden && state.preferences.cursorInteraction && state.location === "desktop" ? screen.getCursorScreenPoint() : null;
     if (cursorPoint && previousCursorPoint && state.currentActivity === "observe"
       && Math.hypot(cursorPoint.x - previousCursorPoint.x, cursorPoint.y - previousCursorPoint.y) >= 48) {
       desktopGoal = null;
@@ -1472,6 +1578,8 @@ app.whenReady().then(() => {
   cursorTimer = setInterval(updateCursor, 600);
   displayChangedHandler = () => { reclampCreature(); positionSpeechWindow(); };
   suspendHandler = () => {
+    desktopControl.cancel();
+    desktopAwareness.stop();
     brain.suspend();
     if (movementTimer) clearInterval(movementTimer);
     movementTimer = undefined;
@@ -1494,6 +1602,7 @@ app.whenReady().then(() => {
   powerMonitor.on("suspend", suspendHandler);
   powerMonitor.on("resume", resumeHandler);
   globalShortcut.register("CommandOrControl+Shift+M", openRoom);
+  globalShortcut.register("CommandOrControl+Alt+Shift+M", stopDesktopControls);
   if (!process.env.TINY_MINT_SMOKE_OUTPUT && !process.env.TINY_MINT_SMOKE_USER_DATA) {
     applyStartupPreference(brain.snapshot().preferences.startWithWindows);
   }
@@ -1507,6 +1616,9 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {});
 app.on("before-quit", () => {
+  desktopControl.cancel();
+  desktopAwareness.stop();
+  if (awarenessTimer) clearInterval(awarenessTimer);
   brain?.stop();
   interactionController?.dispose();
   if (saveTimer) clearTimeout(saveTimer);

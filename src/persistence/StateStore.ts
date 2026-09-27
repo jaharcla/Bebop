@@ -167,6 +167,10 @@ function validateState(value: unknown): CreatureState {
     },
     impulse: null,
     preferences: {
+      bongAutonomyEnabled: booleanValue(preferences.bongAutonomyEnabled, false, "preferences.bongAutonomyEnabled"),
+      vlcControlEnabled: booleanValue(preferences.vlcControlEnabled, false, "preferences.vlcControlEnabled"),
+      spotifyControlEnabled: booleanValue(preferences.spotifyControlEnabled, false, "preferences.spotifyControlEnabled"),
+      cursorNudgesEnabled: booleanValue(preferences.cursorNudgesEnabled, false, "preferences.cursorNudgesEnabled"),
       alwaysOnTop: booleanValue(preferences.alwaysOnTop, defaults.preferences.alwaysOnTop, "preferences.alwaysOnTop"),
       cursorInteraction: booleanValue(preferences.cursorInteraction, defaults.preferences.cursorInteraction, "preferences.cursorInteraction"),
       paused: booleanValue(preferences.paused, defaults.preferences.paused, "preferences.paused"),
@@ -179,6 +183,8 @@ function validateState(value: unknown): CreatureState {
       quietMode: booleanValue(preferences.quietMode, defaults.preferences.quietMode, "preferences.quietMode")
     },
     privacy: {
+      keyboardAwarenessEnabled: booleanValue(privacy.keyboardAwarenessEnabled, false, "privacy.keyboardAwarenessEnabled"),
+      desktopAwarenessEnabled: booleanValue(privacy.desktopAwarenessEnabled, false, "privacy.desktopAwarenessEnabled"),
       awarenessEnabled: booleanValue(privacy.awarenessEnabled, defaults.privacy.awarenessEnabled, "privacy.awarenessEnabled"),
       contextLevel: enumValue(privacy.contextLevel, ["minimal"] as const, defaults.privacy.contextLevel, "privacy context level")
     },

@@ -17,6 +17,10 @@ const clearKey = required<HTMLButtonElement>("#clear-key");
 const testConnection = required<HTMLButtonElement>("#test-connection");
 const exportState = required<HTMLButtonElement>("#export-state");
 const exportMessage = required<HTMLParagraphElement>("#export-message");
+const keyboardAwarenessInput = required<HTMLInputElement>("#keyboard-awareness");
+const keyboardAwarenessMessage = required<HTMLParagraphElement>("#keyboard-awareness-message");
+const desktopAwarenessInput = required<HTMLInputElement>("#desktop-awareness");
+const desktopAwarenessMessage = required<HTMLParagraphElement>("#desktop-awareness-message");
 const awarenessInput = required<HTMLInputElement>("#basic-awareness");
 const awarenessMessage = required<HTMLParagraphElement>("#awareness-message");
 
@@ -98,6 +102,10 @@ const defaultPreferences: CreaturePreferences = {
   roamingEnabled: true,
   roomVisitsEnabled: true,
   roomAutonomyEnabled: true,
+  cursorNudgesEnabled: false,
+  spotifyControlEnabled: false,
+  vlcControlEnabled: false,
+  bongAutonomyEnabled: false,
   interactionsEnabled: true,
   startWithWindows: false,
   quietMode: false
@@ -105,6 +113,8 @@ const defaultPreferences: CreaturePreferences = {
 
 function render(state: CreatureState): void {
   for (const input of inputs) input.checked = state.preferences[preferenceKey(input)];
+  keyboardAwarenessInput.checked = state.privacy.keyboardAwarenessEnabled;
+  desktopAwarenessInput.checked = state.privacy.desktopAwarenessEnabled;
   awarenessInput.checked = state.privacy.awarenessEnabled;
 }
 
@@ -116,7 +126,51 @@ for (const input of inputs) {
   });
 }
 
+const controlsStatus = required<HTMLElement>("#controls-status");
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-desktop-action]")) {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const result = await window.tinyMint.runDesktopAction(button.dataset.desktopAction!);
+      controlsStatus.textContent = result.message;
+      controlsStatus.dataset.error = String(!result.ok);
+    } catch { controlsStatus.textContent = "Control unavailable."; }
+    finally { button.disabled = false; }
+  });
+}
+required<HTMLButtonElement>("#stop-controls").addEventListener("click", async () => {
+  await window.tinyMint.stopDesktopControls();
+  controlsStatus.textContent = "Controls stopped and permissions turned off.";
+});
 window.tinyMint.onState(render);
+keyboardAwarenessInput.addEventListener("change", async () => {
+  keyboardAwarenessInput.disabled = true;
+  keyboardAwarenessMessage.dataset.error = "false";
+  try {
+    const state = await window.tinyMint.setKeyboardAwarenessEnabled(keyboardAwarenessInput.checked);
+    if (!state) throw new Error("Keyboard awareness could not be updated.");
+    render(state);
+    keyboardAwarenessMessage.textContent = state.privacy.keyboardAwarenessEnabled ? "Keyboard awareness is on." : "Keyboard awareness is off.";
+  } catch (error) {
+    keyboardAwarenessMessage.dataset.error = "true";
+    keyboardAwarenessMessage.textContent = error instanceof Error ? error.message : String(error);
+    void window.tinyMint.getState().then(render);
+  } finally { keyboardAwarenessInput.disabled = false; }
+});
+desktopAwarenessInput.addEventListener("change", async () => {
+  desktopAwarenessInput.disabled = true;
+  desktopAwarenessMessage.dataset.error = "false";
+  try {
+    const state = await window.tinyMint.setDesktopAwarenessEnabled(desktopAwarenessInput.checked);
+    if (!state) throw new Error("App awareness could not be updated.");
+    render(state);
+    desktopAwarenessMessage.textContent = state.privacy.desktopAwarenessEnabled ? "App awareness is on." : "App awareness is off.";
+  } catch (error) {
+    desktopAwarenessMessage.dataset.error = "true";
+    desktopAwarenessMessage.textContent = error instanceof Error ? error.message : String(error);
+    void window.tinyMint.getState().then(render);
+  } finally { desktopAwarenessInput.disabled = false; }
+});
 awarenessInput.addEventListener("change", async () => {
   awarenessInput.disabled = true;
   awarenessMessage.dataset.error = "false";

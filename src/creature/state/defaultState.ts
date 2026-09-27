@@ -31,6 +31,10 @@ export const defaultState = (): CreatureState => ({
   },
   impulse: null,
   preferences: {
+    bongAutonomyEnabled: false,
+    vlcControlEnabled: false,
+    spotifyControlEnabled: false,
+    cursorNudgesEnabled: false,
     alwaysOnTop: true,
     cursorInteraction: true,
     paused: false,
@@ -42,7 +46,7 @@ export const defaultState = (): CreatureState => ({
     startWithWindows: false,
     quietMode: false
   },
-  privacy: { awarenessEnabled: false, contextLevel: "minimal" },
+  privacy: { keyboardAwarenessEnabled: false, desktopAwarenessEnabled: false, awarenessEnabled: false, contextLevel: "minimal" },
   onboarding: { introduced: false },
   personality: {
     curiosity: 0.76,

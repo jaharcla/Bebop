@@ -17,7 +17,7 @@ describe("StateStore", () => {
     const state = { ...defaultState(), mood: "playful" as const, position: { x: 123, y: 456 } };
     store.save(state);
     expect(store.load()).toMatchObject({ mood: "playful", position: { x: 123, y: 456 } });
-    expect(JSON.parse(readFileSync(file, "utf8")).schemaVersion).toBe(4);
+    expect(JSON.parse(readFileSync(file, "utf8")).schemaVersion).toBe(5);
   });
 
   it("round trips Basic Awareness and the manually selected bonus prop", () => {
@@ -27,12 +27,12 @@ describe("StateStore", () => {
     const store = new StateStore(file);
     store.save({
       ...defaultState(),
-      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      privacy: { keyboardAwarenessEnabled: true, desktopAwarenessEnabled: true, awarenessEnabled: true, contextLevel: "minimal" },
       room: { ...defaultState().room, target: "bong" }
     });
 
     expect(store.load()).toMatchObject({
-      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      privacy: { keyboardAwarenessEnabled: true, desktopAwarenessEnabled: true, awarenessEnabled: true, contextLevel: "minimal" },
       room: { target: "bong" }
     });
   });
@@ -42,7 +42,7 @@ describe("StateStore", () => {
     directories.push(directory);
     const file = join(directory, "state.json");
     writeFileSync(file, "not-json");
-    expect(new StateStore(file).load().schemaVersion).toBe(4);
+    expect(new StateStore(file).load().schemaVersion).toBe(5);
   });
 
   it("hydrates older partial nested state from current defaults", () => {
@@ -69,7 +69,7 @@ describe("StateStore", () => {
         startWithWindows: false
       },
       personality: { creativity: 0.2, curiosity: defaults.personality.curiosity },
-      privacy: { awarenessEnabled: true, contextLevel: "minimal" },
+      privacy: { keyboardAwarenessEnabled: false, desktopAwarenessEnabled: false, awarenessEnabled: true, contextLevel: "minimal" },
       room: { target: "door" }
     });
   });
@@ -80,7 +80,7 @@ describe("StateStore", () => {
     const file = join(directory, "state.json");
     writeFileSync(file, JSON.stringify({ schemaVersion: 1, room: { target: "desk" }, mood: "playful" }));
     const loaded = new StateStore(file).load();
-    expect(loaded.schemaVersion).toBe(4);
+    expect(loaded.schemaVersion).toBe(5);
     expect(loaded.room.target).toBe("desk");
     expect(loaded.room.carriedItem).toBeNull();
     expect(loaded.impulse).toBeNull();
@@ -104,7 +104,7 @@ describe("StateStore", () => {
     const file = join(directory, "state.json");
     writeFileSync(file, JSON.stringify({ ...defaultState(), personality: { ...defaultState().personality, creativity: 2 } }));
 
-    expect(new StateStore(file).load()).toMatchObject({ schemaVersion: 4, personality: defaultState().personality });
+    expect(new StateStore(file).load()).toMatchObject({ schemaVersion: 5, personality: defaultState().personality });
   });
 
   it("persists bounded corkboard history and exports no credentials or transcripts", () => {

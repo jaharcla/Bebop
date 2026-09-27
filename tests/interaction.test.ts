@@ -688,6 +688,7 @@ describe("ignored autonomous check-ins", () => {
     vi.setSystemTime(1_000_000);
     let state: CreatureState = {
       ...defaultState(),
+      onboarding: { introduced: true },
       lastUserInteraction: 0,
       lastCreatureInteraction: 0
     };
@@ -725,5 +726,38 @@ describe("ignored autonomous check-ins", () => {
       controller.dispose();
       vi.useRealTimers();
     }
+  });
+});
+
+describe("desktop-context dialogue", () => {
+  const focusedContext = {
+    activity: "coding" as const,
+    userPresent: true,
+    fullscreen: false,
+    sampledAt: 1_000_000,
+    focusState: "focused" as const,
+    focusMinutes: 72
+  };
+
+  it("includes only coarse desktop/focus context in the Groq runtime prompt", () => {
+    const messages = buildDialogueMessages({
+      ...request,
+      context: { ...request.context, desktopContext: focusedContext }
+    });
+    const runtime = messages.at(-1)?.content ?? "";
+    expect(runtime).toContain("desktop_activity=coding");
+    expect(runtime).toContain("focus_state=focused");
+    expect(runtime).toContain("focus_minutes=72");
+    expect(runtime).toContain("voice=");
+    expect(runtime).not.toMatch(/window_title|keystroke|screen_content/i);
+  });
+
+  it("keeps local fallback dialogue context-aware during focus", async () => {
+    const provider = new LocalDialogueProvider(() => 0);
+    const response = await provider.respond({
+      ...request,
+      context: { ...request.context, desktopContext: focusedContext }
+    });
+    expect(response.text).toBe("still working huh");
   });
 });
