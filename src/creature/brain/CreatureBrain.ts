@@ -248,7 +248,7 @@ export class CreatureBrain {
         this.publish();
         return;
       }
-      this.startPlan(this.planner.chooseRoomPlan(this.state, now));
+      this.startPlan(this.planner.chooseRoomPlan(this.state, now, this.desktopContext));
     } else {
       this.setActivity(this.environmentState === "long-idle" && !this.conversationActive ? "sleep"
         : this.environmentState === "idle" && !this.conversationActive ? "rest"
@@ -285,7 +285,7 @@ export class CreatureBrain {
     this.state.facing = "left";
     this.state.room = { ...this.state.room, target: "door", position: { x: 850, y: 430 }, carriedItem: null, intention: "come home" };
     this.state.lastActivityChange = Date.now();
-    if (!this.state.preferences.paused) this.startPlan(simplePropRoutine("rug", Date.now(), 80));
+    if (!this.state.preferences.paused) this.startPlan({ ...simplePropRoutine("rug", Date.now(), 80), origin: "context" });
   }
 
   private transitionLocation(location: Location): void {
@@ -358,7 +358,8 @@ export class CreatureBrain {
   }
 
   private completePlan(plan: ActionPlan): void {
-    this.state.habits = recordHabit(this.state.habits, plan.habitActivity, plan.habitProp);
+    const reinforcement = plan.origin === "autonomous" ? 0.05 : plan.origin === "context" ? 0.3 : 1;
+    this.state.habits = recordHabit(this.state.habits, plan.habitActivity, plan.habitProp, reinforcement);
     if (plan.habitProp === "bong" || plan.habitActivity === "bong") this.state.lastBongUseAt = Date.now();
     if (plan.habitActivity === "draw" && this.random() < 0.65) {
       const now = Date.now();

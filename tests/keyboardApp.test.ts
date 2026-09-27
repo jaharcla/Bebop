@@ -15,6 +15,9 @@ describe("keyboard and app awareness", () => {
     expect(classifyApp("chrome")).toBe("browser");
     expect(classifyApp("Spotify")).toBe("media");
     expect(classifyApp("blender")).toBe("creative");
+    expect(classifyApp("WindowsTerminal.exe")).toBe("coding");
+    expect(classifyApp("Discord")).toBe("chat");
+    expect(classifyApp("POWERPNT.EXE")).toBe("presentation");
     expect(classifyApp("code-unknown")).toBe("other");
     expect(classifyApp(null)).toBe("other");
   });

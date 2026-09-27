@@ -131,12 +131,18 @@ export type DesktopActivityKind =
   | "idle"
   | "unknown";
 
+export type FocusState = "none" | "focused" | "recently-finished";
+
 export interface DesktopAwarenessContext {
   activity: DesktopActivityKind;
   userPresent: boolean;
   fullscreen: boolean;
   sampledAt: number;
+  focusState: FocusState;
+  focusMinutes: number;
 }
+
+export type BehaviorOrigin = "user" | "autonomous" | "context";
 
 export interface CreaturePreferences {
   bongAutonomyEnabled: boolean;
@@ -227,7 +233,8 @@ export interface DialogueContext {
   energy: number;
   currentActivity: Activity;
   location: Location;
-  personality: Pick<Personality, "curiosity" | "creativity" | "independence" | "sociability">;
+  personality: Pick<Personality, "curiosity" | "creativity" | "independence" | "sociability"> & Partial<Personality>;
+  desktopContext?: DesktopAwarenessContext | null;
 }
 
 export interface DialogueRequest {

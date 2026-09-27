@@ -1,4 +1,4 @@
-import type { Activity, AnimationName, Location, RoomPropId, WorldPosition } from "../../shared/types";
+import type { Activity, AnimationName, BehaviorOrigin, Location, RoomPropId, WorldPosition } from "../../shared/types";
 
 export type ActionStep =
   | { type: "move-to"; target: WorldPosition; entity?: RoomPropId }
@@ -12,6 +12,7 @@ export type ActionStep =
 
 export interface ActionPlan {
   id: string;
+  origin?: BehaviorOrigin;
   intention: string;
   habitActivity: Activity;
   habitProp: RoomPropId;

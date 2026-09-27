@@ -1,4 +1,5 @@
 import type { ConversationMessage, DialogueRequest } from "../../shared/types";
+import { describeVoiceProfile } from "./voiceProfile";
 
 export type DialogueMessage = {
   role: "system" | "user" | "assistant";
@@ -32,6 +33,7 @@ function band(value: number): "low" | "medium" | "high" {
 function strongestPersonalityTraits(request: DialogueRequest): string[] {
   const values = request.context.personality;
   return Object.entries(values)
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number")
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3)
     .map(([name]) => name);
@@ -54,6 +56,10 @@ export function buildDialogueMessages(request: DialogueRequest): DialogueMessage
     `mood=${context.mood}`,
     `energy=${band(context.energy)}`,
     `personality=${strongestPersonalityTraits(request).join(",") || "balanced"}`,
+    `voice=${describeVoiceProfile()}`,
+    `desktop_activity=${context.desktopContext?.activity ?? "unknown"}`,
+    `focus_state=${context.desktopContext?.focusState ?? "none"}`,
+    `focus_minutes=${Math.round(context.desktopContext?.focusMinutes ?? 0)}`,
     "</RUNTIME_CONTEXT>",
     "",
     request.messages.length

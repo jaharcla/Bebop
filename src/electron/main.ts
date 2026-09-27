@@ -7,6 +7,7 @@ import { loadDevelopmentEnvironment } from "./developmentEnvironment";
 import { InteractionController } from "../interaction/InteractionController";
 import { DesktopControl, actionAllowed, isDesktopAction } from "./DesktopControl";
 import { classifyApp } from "../interaction/appAwareness";
+import { FocusSessionTracker } from "../interaction/focusAwareness";
 import { DesktopAwareness, type ForegroundContext } from "./DesktopAwareness";
 import { isUserPresentFromSystemIdle } from "../interaction/basicAwareness";
 import { createDialogueProvider as selectDialogueProvider } from "../interaction/dialogue/createDialogueProvider";
@@ -64,6 +65,7 @@ const desktopAwareness = new DesktopAwareness((context) => {
 });
 let awarenessTimer: NodeJS.Timeout | undefined;
 let desktopAwarenessContext: DesktopAwarenessContext | null = null;
+const focusTracker = new FocusSessionTracker();
 let qaPresenceOverride: boolean | null = null;
 let displayChangedHandler: (() => void) | undefined;
 let suspendHandler: (() => void) | undefined;
@@ -473,16 +475,20 @@ function sampleSystemAwareness(): void {
   const category = classifyApp(activeApp);
   const activity: DesktopAwarenessContext["activity"] = category === "browser" ? "browsing"
     : category === "creative" ? "drawing"
-      : category === "other" ? (present ? "unknown" : "idle")
-        : category;
+      : category === "chat" ? "chatting"
+        : category === "presentation" ? "presentation"
+          : category === "other" ? (present ? "unknown" : "idle")
+            : category;
+  const now = Date.now();
+  const focus = focusTracker.sample(activity, present, hidden, privacy.desktopAwarenessEnabled, now);
   const context = enabled
-    ? { activity, userPresent: present, fullscreen: hidden, sampledAt: Date.now() }
+    ? { activity, userPresent: present, fullscreen: hidden, sampledAt: now, ...focus }
     : null;
   desktopAwarenessContext = context;
   brain.setDesktopContext(context);
   brain.observeDesktopActivity(category, keyboardActive);
   brain.observeEnvironment(!enabled || present ? "active" : idleSeconds >= 900 ? "long-idle" : "idle", appChanged, hidden);
-  interactionController.setUserBusy(keyboardActive);
+  interactionController.setUserBusy(keyboardActive || context?.focusState === "focused");
   interactionController.setUserPresent(present && !hidden);
   interactionController.setAttentionSuppressed(hidden);
   if (keyboardActive || hidden) desktopControl.cancel();
@@ -1537,6 +1543,7 @@ app.whenReady().then(() => {
   brain = new CreatureBrain(initialState, process.env.TINY_MINT_SMOKE_OUTPUT ? () => 0 : Math.random);
   interactionController = new InteractionController({
     getState: () => brain.snapshot(),
+    getDesktopContext: () => desktopAwarenessContext,
     brain,
     provider: createDialogueProvider(),
     onSession: showSpeechSession,
@@ -1552,8 +1559,12 @@ app.whenReady().then(() => {
   refreshSystemAwareness();
   const updateCursor = () => {
     const state = brain.snapshot();
+    const context = desktopAwarenessContext;
+    const casualContext = !context || ["browsing", "media", "idle", "unknown"].includes(context.activity);
+    const nudgeChance = (0.0015 + state.personality.confidence * 0.003 + state.personality.curiosity * 0.0025) * (casualContext ? 1.35 : 1);
     if (state.preferences.cursorNudgesEnabled && state.location === "desktop" && state.currentActivity === "observe"
-      && !process.env.TINY_MINT_SMOKE_OUTPUT && Math.random() < 0.03) {
+      && context?.focusState !== "focused" && !context?.fullscreen
+      && !process.env.TINY_MINT_SMOKE_OUTPUT && Math.random() < nudgeChance) {
       const point = screen.getCursorScreenPoint();
       if (Math.hypot(point.x - state.position.x - 96, point.y - state.position.y - 96) < 180) void desktopControl.run("cursor-nudge");
     }

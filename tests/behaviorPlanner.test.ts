@@ -136,3 +136,102 @@ function sampledActivities(state: ReturnType<typeof defaultState>, samples: numb
 function planDuration(plan: ReturnType<BehaviorPlanner["chooseRoomPlan"]>): number {
   return plan.steps.reduce((total, step) => total + ("durationMs" in step ? step.durationMs : 0), 0);
 }
+
+describe("desktop-aware room behavior", () => {
+  const context = (overrides: Partial<{
+    activity: "coding" | "browsing" | "media" | "drawing" | "idle";
+    userPresent: boolean;
+    fullscreen: boolean;
+    focusState: "none" | "focused" | "recently-finished";
+    focusMinutes: number;
+  }> = {}) => ({
+    activity: "coding" as const,
+    userPresent: true,
+    fullscreen: false,
+    sampledAt: 1_000_000,
+    focusState: "none" as const,
+    focusMinutes: 0,
+    ...overrides
+  });
+
+  it("suppresses disruptive room behavior during sustained focused work", () => {
+    const state = defaultState();
+    state.location = "room";
+    state.preferences.bongAutonomyEnabled = true;
+    const baseline = scoreRoomBehaviors(state, { hour: 20, now: 1_000_000 });
+    const focused = scoreRoomBehaviors(state, {
+      hour: 20,
+      now: 1_000_000,
+      desktopContext: context({ focusState: "focused", focusMinutes: 45 })
+    });
+
+    expect(focused.bong).toBe(0);
+    expect(focused.play).toBeLessThan(baseline.play / 2);
+    expect(focused.exit).toBeLessThan(baseline.exit / 2);
+    expect(focused.sit).toBeGreaterThan(baseline.sit);
+    expect(focused.book).toBeGreaterThan(baseline.book);
+  });
+
+  it("loosens up after focus and responds to media without making the clock dominant", () => {
+    const state = defaultState();
+    state.location = "room";
+    state.preferences.bongAutonomyEnabled = true;
+    const baseline = scoreRoomBehaviors(state, { hour: 14, now: 1_000_000 });
+    const afterFocus = scoreRoomBehaviors(state, {
+      hour: 14,
+      now: 1_000_000,
+      desktopContext: context({ activity: "browsing", focusState: "recently-finished", focusMinutes: 90 })
+    });
+    const media = scoreRoomBehaviors(state, {
+      hour: 14,
+      now: 1_000_000,
+      desktopContext: context({ activity: "media" })
+    });
+
+    expect(afterFocus.play).toBeGreaterThan(baseline.play);
+    expect(afterFocus.music).toBeGreaterThan(baseline.music);
+    expect(media.music).toBeGreaterThan(baseline.music);
+    expect(media.sit).toBeGreaterThan(baseline.sit);
+  });
+
+  it("does not try to return to a fullscreen desktop and becomes more solitary while the user is away", () => {
+    const state = defaultState();
+    state.location = "room";
+    const baseline = scoreRoomBehaviors(state, { hour: 14, now: 1_000_000 });
+    const fullscreen = scoreRoomBehaviors(state, {
+      hour: 14,
+      now: 1_000_000,
+      desktopContext: context({ fullscreen: true })
+    });
+    const away = scoreRoomBehaviors(state, {
+      hour: 14,
+      now: 1_000_000,
+      desktopContext: context({ userPresent: false, activity: "idle" })
+    });
+
+    expect(fullscreen.exit).toBe(0);
+    expect(away.exit).toBeLessThan(baseline.exit);
+    expect(away.book).toBeGreaterThan(baseline.book);
+    expect(away.sleep).toBeGreaterThan(baseline.sleep);
+  });
+
+  it("marks planner-selected plans autonomous", () => {
+    const state = defaultState();
+    state.location = "room";
+    expect(new BehaviorPlanner(() => 0).chooseRoomPlan(state, 1_000_000).origin).toBe("autonomous");
+  });
+
+  it("lets user-directed behavior teach affinity much more strongly than autonomous repetition", () => {
+    let user = defaultState().habits;
+    let autonomous = defaultState().habits;
+    for (let index = 0; index < 20; index += 1) {
+      user = recordHabit(user, "draw", "desk", 1);
+      autonomous = recordHabit(autonomous, "draw", "desk", 0.05);
+    }
+
+    expect((user.activityAffinity.draw ?? 1) - (autonomous.activityAffinity.draw ?? 1)).toBeGreaterThan(0.1);
+    expect(user.activityUses.draw).toBe(20);
+    expect(autonomous.activityUses.draw).toBe(20);
+    expect(autonomous.recentActivities).toHaveLength(8);
+  });
+});

@@ -1,12 +1,25 @@
 import type { Activity, HabitProfile, RoomPropId } from "../../shared/types";
 
-const boundedAffinity = (value: number): number => Math.max(0.75, Math.min(1.25, 1 + (value - 1) * 0.985));
+const boundedAffinity = (value: number, learningStrength: number): number => {
+  const decay = 1 - 0.015 * learningStrength;
+  return Math.max(0.75, Math.min(1.25, 1 + (value - 1) * decay));
+};
 
-export function recordHabit(habits: HabitProfile, activity: Activity, prop?: RoomPropId): HabitProfile {
-  const activityAffinity = Object.fromEntries(Object.entries(habits.activityAffinity).map(([key, value]) => [key, boundedAffinity(value ?? 1)]));
-  const propAffinity = Object.fromEntries(Object.entries(habits.propAffinity).map(([key, value]) => [key, boundedAffinity(value ?? 1)]));
-  activityAffinity[activity] = Math.min(1.25, (activityAffinity[activity] ?? 1) + 0.018);
-  if (prop) propAffinity[prop] = Math.min(1.25, (propAffinity[prop] ?? 1) + 0.018);
+export function recordHabit(
+  habits: HabitProfile,
+  activity: Activity,
+  prop?: RoomPropId,
+  reinforcement = 1
+): HabitProfile {
+  const learning = Math.max(0, Math.min(1, reinforcement));
+  const activityAffinity = Object.fromEntries(
+    Object.entries(habits.activityAffinity).map(([key, value]) => [key, boundedAffinity(value ?? 1, learning)])
+  );
+  const propAffinity = Object.fromEntries(
+    Object.entries(habits.propAffinity).map(([key, value]) => [key, boundedAffinity(value ?? 1, learning)])
+  );
+  activityAffinity[activity] = Math.min(1.25, (activityAffinity[activity] ?? 1) + 0.018 * learning);
+  if (prop) propAffinity[prop] = Math.min(1.25, (propAffinity[prop] ?? 1) + 0.018 * learning);
   return {
     activityAffinity,
     propAffinity,

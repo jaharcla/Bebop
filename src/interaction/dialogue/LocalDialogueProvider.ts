@@ -1,6 +1,7 @@
 import type { CreatureUtterance, DialogueRequest } from "../../shared/types";
 import type { DialogueProvider } from "./DialogueProvider";
 import { validateUtterance } from "./responseValidation";
+import { TINY_MINT_VOICE_PROFILE, type VoiceProfile } from "./voiceProfile";
 
 const openingLines: Record<DialogueRequest["trigger"], readonly string[]> = {
   FIRST_HELLO: ["uh hi", "okay so... this is your computer?", "hi. i’m looking around", "wait, you’re actually here"],
@@ -16,7 +17,7 @@ const followUpReplies = ["no promises", "too late", "you’re welcome"];
 const reactions = ["huh", "mm", "okay", "i'm listening", "not sure what to say to that", "fair", "tell me more?"];
 
 export class LocalDialogueProvider implements DialogueProvider {
-  constructor(private readonly random: () => number = Math.random) {}
+  constructor(private readonly random: () => number = Math.random, private readonly voice: VoiceProfile = TINY_MINT_VOICE_PROFILE) {}
 
   async respond(request: DialogueRequest, signal?: AbortSignal): Promise<CreatureUtterance> {
     if (signal?.aborted) throw new DOMException("Dialogue request aborted.", "AbortError");
@@ -31,9 +32,14 @@ export class LocalDialogueProvider implements DialogueProvider {
       playful: ["wait wait", "lemme see", "okay that’s kinda sick"],
       excited: ["oh wait, show me", "okay that’s kinda sick", "wait wait"]
     };
+    const focusLines = request.context.desktopContext?.focusState === "focused"
+      ? (this.voice.directness >= 0.65 ? ["still working huh", "i'll be quiet", "locked in"] : ["busy?", "hmm", "okay"])
+      : request.context.desktopContext?.focusState === "recently-finished"
+        ? (this.voice.warmth >= 0.5 ? ["done for now?", "you survived", "okay break time"] : ["finally", "done?", "break time"])
+        : undefined;
     const options = latestUserMessage
       ? reactions
-      : moodLines[request.context.mood] ?? openingLines[request.trigger];
+      : focusLines ?? moodLines[request.context.mood] ?? openingLines[request.trigger];
     const line = options.find((option) => !previousCreatureLines.includes(option))
       ?? options[Math.floor(this.random() * options.length)]
       ?? "huh";

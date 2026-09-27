@@ -7,7 +7,7 @@ const use = (entity: RoomPropId, affordance: string, activity: Activity, animati
   ({ type: "interact", entity, affordance, activity, animation, durationMs });
 
 function plan(intention: string, habitActivity: Activity, habitProp: RoomPropId, steps: ActionStep[], now: number, priority: number): ActionPlan {
-  return { id: `${intention}-${now}`, intention, habitActivity, habitProp, steps, startedAt: now, priority, interruptibility: priority >= 100 ? "low" : "normal" };
+  return { id: `${intention}-${now}`, origin: "user", intention, habitActivity, habitProp, steps, startedAt: now, priority, interruptibility: priority >= 100 ? "low" : "normal" };
 }
 
 export const bookRoutine = (now: number, priority = 40): ActionPlan => plan("read a book", "read", "bookshelf", [

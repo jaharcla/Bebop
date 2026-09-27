@@ -4,7 +4,8 @@ import type {
   CreatureUtterance,
   DialogueRequest,
   InteractionSession,
-  InteractionTrigger
+  InteractionTrigger,
+  DesktopAwarenessContext
 } from "../shared/types";
 import type { DialogueProvider } from "./dialogue/DialogueProvider";
 import { LocalDialogueProvider } from "./dialogue/LocalDialogueProvider";
@@ -26,6 +27,7 @@ export interface InteractionBrain {
 
 export interface InteractionControllerOptions {
   getState(): CreatureState;
+  getDesktopContext?(): DesktopAwarenessContext | null;
   brain: InteractionBrain;
   provider: DialogueProvider;
   onSession(session: InteractionSession | null): void;
@@ -319,7 +321,7 @@ export class InteractionController {
   private async generateReply(trigger: InteractionTrigger): Promise<void> {
     const session = this.session;
     if (!session) return;
-    const request = buildRequest(trigger, this.options.getState(), session.messages);
+    const request = buildRequest(trigger, this.options.getState(), session.messages, this.options.getDesktopContext?.() ?? null);
     this.activeReplyController?.abort();
     const replyController = new AbortController();
     this.activeReplyController = replyController;
@@ -383,7 +385,7 @@ export class InteractionController {
   }
 }
 
-function buildRequest(trigger: InteractionTrigger, state: CreatureState, messages: ConversationMessage[]): DialogueRequest {
+function buildRequest(trigger: InteractionTrigger, state: CreatureState, messages: ConversationMessage[], desktopContext: DesktopAwarenessContext | null): DialogueRequest {
   return {
     trigger,
     context: {
@@ -391,12 +393,8 @@ function buildRequest(trigger: InteractionTrigger, state: CreatureState, message
       energy: state.energy,
       currentActivity: state.currentActivity,
       location: state.location,
-      personality: {
-        curiosity: state.personality.curiosity,
-        creativity: state.personality.creativity,
-        independence: state.personality.independence,
-        sociability: state.personality.sociability
-      }
+      personality: { ...state.personality },
+      desktopContext
     },
     messages: messages.slice(-MAX_CONVERSATION_MESSAGES)
   };
